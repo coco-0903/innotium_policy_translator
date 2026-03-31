@@ -369,17 +369,38 @@ function selectTab(el) {
     currentFeature = el.dataset.feature;
 
     const querySection = document.getElementById('querySection');
+    const dbSection = document.getElementById('dbSection');
+    const logSection = document.getElementById('logSection');
+    const inputArea = document.querySelector('.input-area');
     const btnText = document.getElementById('btnText');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+
+    // Reset visibility
+    querySection.style.display = 'none';
+    dbSection.style.display = 'none';
+    logSection.style.display = 'none';
+    inputArea.style.display = 'flex';
+    analyzeBtn.style.display = 'flex';
 
     if (currentFeature === 'simulate') {
         querySection.style.display = 'flex';
         btnText.textContent = '시뮬레이션 실행';
     } else if (currentFeature === 'translate') {
-        querySection.style.display = 'none';
         btnText.textContent = '정책 번역';
     } else if (currentFeature === 'diagnose') {
-        querySection.style.display = 'none';
         btnText.textContent = '정책 진단';
+    } else if (currentFeature === 'db') {
+        inputArea.style.display = 'none';
+        dbSection.style.display = 'flex';
+        analyzeBtn.style.display = 'none';
+    } else if (currentFeature === 'log') {
+        inputArea.style.display = 'none';
+        logSection.style.display = 'flex';
+        analyzeBtn.style.display = 'none';
+        // Auto-load log list on first visit
+        if (document.getElementById('logList').querySelector('.browser-empty')) {
+            refreshLogList();
+        }
     }
 }
 
@@ -527,4 +548,214 @@ async function analyze() {
     } finally {
         btn.disabled = false;
     }
+}
+
+
+// ═══ DB Browser ═══
+
+async function loadPolicies() {
+    const product = document.getElementById('dbProductSelect').value;
+    const listEl = document.getElementById('policyList');
+
+    if (!product) {
+        showToast('제품을 선택해주세요');
+        return;
+    }
+
+    listEl.innerHTML = '<div class="browser-loading"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 불러오는 중...</div>';
+
+    try {
+        const res = await fetch(`/api/policies/${product}`);
+        const data = await res.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`;
+            return;
+        }
+
+        if (!data.policies || data.policies.length === 0) {
+            listEl.innerHTML = '<div class="browser-empty">정책이 없습니다</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        data.policies.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'policy-item';
+            item.dataset.id = p.id;
+            item.dataset.product = product;
+
+            const dateStr = p.updateDatetime
+                ? new Date(p.updateDatetime).toLocaleDateString('ko-KR')
+                : (p.createDatetime ? new Date(p.createDatetime).toLocaleDateString('ko-KR') : '');
+
+            item.innerHTML = `
+                <span class="policy-item__icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                    </svg>
+                </span>
+                <span class="policy-item__name" title="${p.name || '(이름 없음)'}">${p.name || '(이름 없음)'}</span>
+                <span class="policy-item__id">#${p.id}</span>
+                ${dateStr ? `<span class="policy-item__date">${dateStr}</span>` : ''}
+            `;
+            item.addEventListener('click', () => loadPolicyDetail(product, p.id, p.name, item));
+            listEl.appendChild(item);
+        });
+
+        showToast(`${data.policies.length}개 정책 조회 완료`);
+    } catch (err) {
+        listEl.innerHTML = `<div class="browser-empty">연결 오류: ${err.message}</div>`;
+    }
+}
+
+async function loadPolicyDetail(product, id, name, itemEl) {
+    // Highlight selected
+    document.querySelectorAll('.policy-item').forEach(el => el.classList.remove('selected'));
+    itemEl.classList.add('selected');
+
+    showToast('정책 불러오는 중...');
+
+    try {
+        const res = await fetch(`/api/policies/${product}/${id}`);
+        const data = await res.json();
+
+        if (data.error) {
+            showToast('오류: ' + data.error);
+            return;
+        }
+
+        // Put JSON in the textarea and switch to translate tab
+        const formatted = JSON.stringify(data, null, 2);
+        document.getElementById('policyInput').value = formatted;
+        document.getElementById('charCount').textContent = formatted.length + '자';
+
+        // Switch to translate tab
+        const translateTab = document.querySelector('[data-feature="translate"]');
+        selectTab(translateTab);
+
+        showToast(`"${name}" 로드 완료 — 분석 버튼을 눌러주세요`);
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    }
+}
+
+
+// ═══ Log Browser ═══
+
+async function refreshLogList() {
+    const listEl = document.getElementById('logList');
+    listEl.innerHTML = '<div class="browser-loading"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 불러오는 중...</div>';
+
+    try {
+        const res = await fetch('/api/logs/list');
+        const data = await res.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`;
+            return;
+        }
+
+        const groups = data.groups || {};
+        const hasAny = Object.values(groups).some(arr => arr && arr.length > 0);
+
+        if (!hasAny) {
+            listEl.innerHTML = '<div class="browser-empty">로그 파일이 없습니다</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        const groupLabels = {
+            'catalina': 'Tomcat Catalina',
+            'agent': '에이전트 로그',
+            'nginx': 'Nginx',
+            'other': '기타'
+        };
+
+        for (const [groupKey, files] of Object.entries(groups)) {
+            if (!files || files.length === 0) continue;
+
+            const groupEl = document.createElement('div');
+            groupEl.className = 'log-group';
+            groupEl.innerHTML = `<div class="log-group__title">${groupLabels[groupKey] || groupKey}</div>`;
+
+            files.forEach(f => {
+                const item = document.createElement('div');
+                item.className = 'log-item';
+                const sizeStr = f.size != null ? formatFileSize(f.size) : '';
+                item.innerHTML = `
+                    <span class="log-item__icon">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                    </span>
+                    <span class="log-item__name" title="${f.path}">${f.name}</span>
+                    ${sizeStr ? `<span class="log-item__size">${sizeStr}</span>` : ''}
+                `;
+                item.addEventListener('click', () => analyzeLog(f.path, f.name, item));
+                groupEl.appendChild(item);
+            });
+
+            listEl.appendChild(groupEl);
+        }
+
+        const total = Object.values(groups).reduce((acc, arr) => acc + (arr ? arr.length : 0), 0);
+        showToast(`로그 파일 ${total}개 발견`);
+    } catch (err) {
+        listEl.innerHTML = `<div class="browser-empty">연결 오류: ${err.message}</div>`;
+    }
+}
+
+async function analyzeLog(path, name, itemEl) {
+    document.querySelectorAll('.log-item').forEach(el => el.classList.remove('selected'));
+    itemEl.classList.add('selected');
+
+    const loadingState = document.getElementById('loadingState');
+    const emptyState = document.getElementById('emptyState');
+    const resultState = document.getElementById('resultState');
+    const loadingFeature = document.getElementById('loadingFeature');
+
+    emptyState.style.display = 'none';
+    resultState.style.display = 'none';
+    loadingState.style.display = 'flex';
+    loadingFeature.textContent = `"${name}" 분석 중...`;
+
+    try {
+        const res = await fetch('/api/logs/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            lastResult = data.result;
+            document.getElementById('resultBadgeText').textContent = '로그 분석 완료';
+            const resultContent = document.getElementById('resultContent');
+            if (typeof marked !== 'undefined') {
+                resultContent.innerHTML = marked.parse(data.result);
+            } else {
+                resultContent.innerHTML = '<pre>' + data.result + '</pre>';
+            }
+            loadingState.style.display = 'none';
+            resultState.style.display = 'flex';
+        } else {
+            showToast('분석 실패: ' + (data.error || '알 수 없는 오류'));
+            loadingState.style.display = 'none';
+            emptyState.style.display = 'flex';
+        }
+    } catch (err) {
+        showToast('서버 연결 실패: ' + err.message);
+        loadingState.style.display = 'none';
+        emptyState.style.display = 'flex';
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
 }

@@ -116,6 +116,69 @@
                     </svg>
                     정책 진단
                 </button>
+                <button class="tab" data-feature="db" onclick="selectTab(this)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                    </svg>
+                    DB 조회
+                </button>
+                <button class="tab" data-feature="log" onclick="selectTab(this)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    로그 분석
+                </button>
+            </div>
+
+            <!-- DB Browser Section (hidden by default) -->
+            <div class="db-browser" id="dbSection" style="display:none;">
+                <div class="db-controls">
+                    <select class="product-select" id="dbProductSelect">
+                        <option value="">-- 제품 선택 --</option>
+                        <option value="securezone">SecureZone (에이전트 정책)</option>
+                        <option value="securezone_acl">SecureZone (접근 제어)</option>
+                        <option value="controlsuite">ControlSuite</option>
+                        <option value="ransomcruncher">RansomCruncher (탐지 정책)</option>
+                        <option value="ransomcruncher_rdp">RansomCruncher (RDP)</option>
+                        <option value="npouch">nPouch (정책)</option>
+                        <option value="npouch_origin">nPouch (원본 보호)</option>
+                        <option value="innomark">innoMark (정책)</option>
+                        <option value="innomark_rdp">innoMark (RDP)</option>
+                        <option value="lizardbackup">LizardBackup (정책)</option>
+                        <option value="lizardbackup_agent">LizardBackup (에이전트)</option>
+                        <option value="unified">통합 에이전트 정책</option>
+                    </select>
+                    <button class="btn-load" onclick="loadPolicies()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                        </svg>
+                        조회
+                    </button>
+                </div>
+                <div class="policy-list" id="policyList">
+                    <div class="browser-empty">제품을 선택하고 조회 버튼을 누르세요</div>
+                </div>
+            </div>
+
+            <!-- Log Browser Section (hidden by default) -->
+            <div class="log-browser" id="logSection" style="display:none;">
+                <div class="log-controls">
+                    <span style="font-size:0.78rem; color:var(--text-secondary); flex:1;">서버 로그 파일 선택</span>
+                    <button class="btn-load" onclick="refreshLogList()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                        </svg>
+                        새로고침
+                    </button>
+                </div>
+                <div class="log-list" id="logList">
+                    <div class="browser-empty">새로고침 버튼을 눌러 로그 목록을 가져오세요</div>
+                </div>
             </div>
 
             <!-- Simulate Query Input (hidden by default) -->
@@ -190,9 +253,9 @@
 
     <!-- ═══ Footer ═══ -->
     <footer class="footer">
-        <span>Policy Analyzer v2.5</span>
+        <span>Policy Analyzer v3.0</span>
         <span class="footer-sep">·</span>
-        <span>Powered by Gemini AI</span>
+        <span>Powered by Claude AI</span>
         <span class="footer-sep">·</span>
         <span>Innotium Security Platform v11</span>
     </footer>

@@ -918,6 +918,17 @@ def api_policies():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/policies/<product>', methods=['GET'])
+def api_policies_by_product(product):
+    try:
+        all_data = get_all_policies()
+        if 'error' in all_data:
+            return jsonify(all_data), 500
+        policies = all_data.get(product, [])
+        return jsonify({"policies": policies, "product": product, "count": len(policies)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/policies/<product>/<int:policy_id>', methods=['GET'])
 def api_policy_detail(product, policy_id):
     try:
@@ -940,30 +951,37 @@ ALLOWED_LOG_DIRS = [
 @app.route('/api/logs/list', methods=['GET'])
 def api_logs_list():
     import glob
-    files = []
+    groups = {'catalina': [], 'agent': [], 'nginx': [], 'other': []}
+    dir_group_map = {
+        '/log/catalina/': 'catalina',
+        '/cache/agentLog/': 'agent',
+        '/log/nginx/': 'nginx',
+    }
     for log_dir in ALLOWED_LOG_DIRS:
         if not os.path.isdir(log_dir):
             continue
+        group_key = dir_group_map.get(log_dir, 'other')
         for path in glob.glob(os.path.join(log_dir, '**', '*'), recursive=True):
             real = os.path.realpath(path)
             if not any(real.startswith(os.path.realpath(d)) for d in ALLOWED_LOG_DIRS):
                 continue
             if os.path.isfile(real):
                 stat = os.stat(real)
-                files.append({
+                groups[group_key].append({
                     'path': path,
                     'name': os.path.basename(path),
                     'size': stat.st_size,
                     'modified': stat.st_mtime,
                 })
-    files.sort(key=lambda x: x['modified'], reverse=True)
-    return jsonify(files)
+    for key in groups:
+        groups[key].sort(key=lambda x: x['modified'], reverse=True)
+    return jsonify({'groups': groups})
 
 @app.route('/api/logs/analyze', methods=['POST'])
 def api_logs_analyze():
     try:
         data = request.json
-        log_path = data.get('logPath', '')
+        log_path = data.get('path') or data.get('logPath', '')
         query = data.get('query', '')
 
         if not log_path:
