@@ -233,6 +233,67 @@ const SAMPLE_POLICY = {
 };
 
 
+// ═══ Dashboard ═══
+
+const PRODUCT_LABELS = {
+    securezone:        'SecureZone',
+    securezone_acl:    'SecureZone ACL',
+    controlsuite:      'ControlSuite',
+    ransomcruncher:    'RansomCruncher',
+    ransomcruncher_rdp:'RC RDP',
+    npouch:            'nPouch',
+    npouch_origin:     'nPouch 원본보호',
+    innomark:          'innoMark',
+    innomark_rdp:      'IM RDP',
+    lizardbackup:      'LizardBackup',
+    lizardbackup_agent:'LB 에이전트',
+    unified:           '통합정책',
+};
+
+async function loadDashboard() {
+    const badge = document.getElementById('dbStatusBadge');
+    const statsEl = document.getElementById('dashboardStats');
+    const policiesEl = document.getElementById('dashboardPolicies');
+
+    try {
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+
+        if (!data.connected) {
+            badge.textContent = 'DB 연결 실패';
+            badge.className = 'db-status db-status--error';
+            policiesEl.innerHTML = `<div class="dash-error">DB 연결 오류: ${data.error || '알 수 없음'}</div>`;
+            return;
+        }
+
+        badge.textContent = '연결됨';
+        badge.className = 'db-status db-status--ok';
+
+        // 사용자/부서
+        document.getElementById('statUsers').textContent = data.users ?? '-';
+        document.getElementById('statGroups').textContent = data.groups ?? '-';
+
+        // 제품별 정책 수
+        const products = data.products || {};
+        policiesEl.innerHTML = '';
+        for (const [key, count] of Object.entries(products)) {
+            const label = PRODUCT_LABELS[key] || key;
+            const card = document.createElement('div');
+            card.className = 'dash-policy-card' + (count > 0 ? ' dash-policy-card--has-data' : '');
+            card.innerHTML = `
+                <span class="dash-policy-card__name">${label}</span>
+                <span class="dash-policy-card__count">${count < 0 ? '?' : count}</span>
+            `;
+            policiesEl.appendChild(card);
+        }
+    } catch (err) {
+        badge.textContent = 'DB 오프라인';
+        badge.className = 'db-status db-status--error';
+        policiesEl.innerHTML = `<div class="dash-error">서버 연결 실패</div>`;
+    }
+}
+
+
 // ═══ Initialization ═══
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -285,6 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (files.length > 0) readMultipleFiles(files);
         fileInput.value = '';  // 같은 파일 재업로드 가능하게
     });
+
+    // 대시보드 초기 로드
+    loadDashboard();
 
     // Configure marked
     if (typeof marked !== 'undefined') {
@@ -674,6 +738,7 @@ async function refreshLogList() {
             'catalina': 'Tomcat Catalina',
             'agent': '에이전트 로그',
             'nginx': 'Nginx',
+            'policy-analyzer': 'Policy Analyzer',
             'other': '기타'
         };
 

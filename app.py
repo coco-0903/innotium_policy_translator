@@ -50,8 +50,8 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
 
 _ALLOWED_ORIGINS = os.getenv(
     'ALLOWED_ORIGINS',
-    'http://192.168.11.97:40000,http://192.168.11.97:40001,'
-    'http://192.168.11.97:40010,http://127.0.0.1:5000,http://localhost:5000'
+    'http://172.30.1.44:40000,http://172.30.1.44:40001,'
+    'http://172.30.1.44:40010,http://127.0.0.1:5000,http://localhost:5000'
 ).split(',')
 CORS(app, origins=[o.strip() for o in _ALLOWED_ORIGINS])
 
@@ -82,9 +82,9 @@ MODEL_NAME = 'claude-sonnet-4-6'
 
 client = anthropic.Anthropic(api_key=API_KEY, timeout=60.0)
 
-logger.info(f"Policy Analyzer v3.0 시작 — 모델: {MODEL_NAME}")
+logger.info(f"Policy Analyzer v3.5 시작 — 모델: {MODEL_NAME}")
 print(f"[✓] Claude 모델: {MODEL_NAME}")
-print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
+print("[✓] Policy Analyzer v3.5 — 6개 제품 통합 + 대시보드 + 운영 자동화")
 
 
 def call_claude(system_prompt, user_message):
@@ -900,7 +900,7 @@ def serve_static(path):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "OK", "service": "Policy Analyzer", "version": "2.0", "products": 6})
+    return jsonify({"status": "OK", "service": "Policy Analyzer", "version": "3.5", "products": 6})
 
 @app.route('/api/translate', methods=['POST'])
 @limiter.limit("20 per minute")
@@ -1055,16 +1055,18 @@ ALLOWED_LOG_DIRS = [
     '/log/catalina/',
     '/cache/agentLog/',
     '/log/nginx/',
+    '/log/policy-analyzer/',
 ]
 
 @app.route('/api/logs/list', methods=['GET'])
 def api_logs_list():
     import glob
-    groups = {'catalina': [], 'agent': [], 'nginx': [], 'other': []}
+    groups = {'catalina': [], 'agent': [], 'nginx': [], 'policy-analyzer': [], 'other': []}
     dir_group_map = {
         '/log/catalina/': 'catalina',
         '/cache/agentLog/': 'agent',
         '/log/nginx/': 'nginx',
+        '/log/policy-analyzer/': 'policy-analyzer',
     }
     for log_dir in ALLOWED_LOG_DIRS:
         if not os.path.isdir(log_dir):

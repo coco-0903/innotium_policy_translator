@@ -29,7 +29,7 @@
             </div>
         </div>
         <div class="header__right">
-            <a href="http://192.168.11.97:40000" target="_blank" class="btn-manager">
+            <a href="http://172.30.1.44:40000" target="_blank" class="btn-manager">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
                 </svg>
@@ -214,18 +214,40 @@
                 <p class="loading-sub" id="loadingFeature"></p>
             </div>
 
-            <!-- Empty State -->
+            <!-- Empty State / Dashboard -->
             <div class="empty-state" id="emptyState">
-                <div class="empty-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
-                    </svg>
+                <!-- DB 대시보드 -->
+                <div class="dashboard" id="dashboard">
+                    <div class="dashboard__header">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                        </svg>
+                        <span>innoplatform DB 현황</span>
+                        <span class="db-status" id="dbStatusBadge">연결 확인 중...</span>
+                    </div>
+                    <div class="dashboard__stats" id="dashboardStats">
+                        <div class="stat-card stat-card--meta">
+                            <span class="stat-card__label">사용자</span>
+                            <span class="stat-card__value" id="statUsers">-</span>
+                        </div>
+                        <div class="stat-card stat-card--meta">
+                            <span class="stat-card__label">부서</span>
+                            <span class="stat-card__value" id="statGroups">-</span>
+                        </div>
+                    </div>
+                    <div class="dashboard__policies" id="dashboardPolicies">
+                        <!-- 제품별 정책 수 동적 렌더링 -->
+                    </div>
                 </div>
-                <p class="empty-title">분석 대기 중</p>
-                <p class="empty-desc">좌측에 정책 JSON 또는 에이전트 로그를 입력하고<br>분석 기능을 선택해주세요</p>
+
+                <div class="empty-hint">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    <span>좌측에 정책 JSON 또는 로그를 입력 후 분석하거나, DB 탭에서 정책을 선택하세요</span>
+                </div>
             </div>
 
             <!-- Result State -->
