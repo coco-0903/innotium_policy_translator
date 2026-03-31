@@ -1,9 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════╗
-║  Policy Analyzer v2.5 — 보안 정책 번역기 & 시뮬레이터        ║
+║  Policy Analyzer v3.0 — 보안 정책 번역기 & 시뮬레이터        ║
 ║  Innotium Security Platform v11                              ║
 ║  6개 제품 통합 Knowledge Base (매뉴얼 기반 강화)               ║
-║  Powered by Gemini AI + RAG                                  ║
+║  Powered by Claude AI + RAG                                  ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
@@ -13,15 +13,7 @@ import os
 import json
 from datetime import datetime
 from parser import parse_input
-
-# ── SDK 자동 감지 ──
-try:
-    from google import genai
-    from google.genai import types
-    NEW_SDK = True
-except ImportError:
-    import google.generativeai as genai
-    NEW_SDK = False
+import anthropic
 
 try:
     from dotenv import load_dotenv
@@ -33,45 +25,30 @@ app = Flask(__name__)
 CORS(app)
 
 # ═══════════════════════════════════════════════════
-# Gemini API 설정
+# Claude API 설정
 # ═══════════════════════════════════════════════════
-API_KEY = os.getenv('GEMINI_API_KEY', '')
-MODEL_NAME = 'gemini-2.5-flash'
+API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+MODEL_NAME = 'claude-sonnet-4-6'
 
-if NEW_SDK:
-    client = genai.Client(api_key=API_KEY)
-    print("[✓] google-genai (신규 SDK)")
-else:
-    genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel(f'models/{MODEL_NAME}')
-    print("[✓] google-generativeai (구형 SDK)")
+client = anthropic.Anthropic(api_key=API_KEY)
 
-print(f"[✓] Gemini 모델: {MODEL_NAME}")
-print("[✓] Policy Analyzer v2.5 — 6개 제품 통합 (매뉴얼 기반 KB)")
+print(f"[✓] Claude 모델: {MODEL_NAME}")
+print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
 
 
-def call_gemini(prompt):
-    """SDK 버전에 관계없이 Gemini 호출"""
-    if NEW_SDK:
-        response = client.models.generate_content(
-            model=MODEL_NAME,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.3)
-        )
-    else:
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(temperature=0.3)
-        )
+def call_claude(system_prompt, user_message):
+    """Claude API 호출"""
     try:
-        return response.text
-    except Exception:
-        result = ""
-        if response.candidates:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'text') and part.text:
-                    result += part.text
-        return result or "AI가 응답을 생성하지 못했습니다."
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=8192,
+            temperature=0.3,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        return f"AI 호출 오류: {str(e)}"
 
 
 # ═══════════════════════════════════════════════════
@@ -837,6 +814,9 @@ DIAGNOSE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제
 # 라우트
 # ═══════════════════════════════════════════════════
 
+from db import get_dashboard, get_all_policies, get_policy_detail
+import db as _db_module
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -869,14 +849,10 @@ def translate_policy():
         if parsed['input_type'] not in ('clean_json', 'clean_json_array'):
             meta = f"\n[파서 정보] 입력유형: {parsed['input_type']}, 추출 정책: {parsed['policy_count']}개, 제품: {', '.join(parsed['products_found'])}\n"
 
-        prompt = f"""{TRANSLATE_PROMPT}
-{meta}
-아래 정책 데이터를 분석하여 자연어로 번역해주세요:
-
-{policy_text}"""
+        user_msg = f"{meta}\n아래 정책 데이터를 분석하여 자연어로 번역해주세요:\n\n{policy_text}"
         return jsonify({
             "success": True,
-            "result": call_gemini(prompt),
+            "result": call_claude(TRANSLATE_PROMPT, user_msg),
             "feature": "translate",
             "parser_info": {
                 "input_type": parsed['input_type'],
@@ -901,14 +877,8 @@ def simulate_policy():
         parsed = parse_input(policy_json)
         policy_text = parsed['clean_json']
 
-        prompt = f"""{SIMULATE_PROMPT}
-
-정책 데이터:
-{policy_text}
-
-사용자 질의:
-{query}"""
-        return jsonify({"success": True, "result": call_gemini(prompt), "feature": "simulate"})
+        user_msg = f"정책 데이터:\n{policy_text}\n\n사용자 질의:\n{query}"
+        return jsonify({"success": True, "result": call_claude(SIMULATE_PROMPT, user_msg), "feature": "simulate"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -926,12 +896,100 @@ def diagnose_policy():
         if parsed['policy_count'] == 0 and parsed['input_type'] == 'no_json_found':
             return jsonify({"error": "입력에서 정책 데이터를 찾지 못했습니다."}), 400
 
-        prompt = f"""{DIAGNOSE_PROMPT}
+        user_msg = f"아래 정책 데이터를 진단해주세요:\n\n{policy_text}"
+        return jsonify({"success": True, "result": call_claude(DIAGNOSE_PROMPT, user_msg), "feature": "diagnose"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-아래 정책 데이터를 진단해주세요:
 
-{policy_text}"""
-        return jsonify({"success": True, "result": call_gemini(prompt), "feature": "diagnose"})
+# ─── DB 엔드포인트 ───
+
+@app.route('/api/dashboard', methods=['GET'])
+def api_dashboard():
+    try:
+        return jsonify(get_dashboard())
+    except Exception as e:
+        return jsonify({"error": str(e), "connected": False}), 500
+
+@app.route('/api/policies', methods=['GET'])
+def api_policies():
+    try:
+        return jsonify(get_all_policies())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/policies/<product>/<int:policy_id>', methods=['GET'])
+def api_policy_detail(product, policy_id):
+    try:
+        result = get_policy_detail(product, policy_id)
+        if 'error' in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── 로그 파일 엔드포인트 ───
+
+ALLOWED_LOG_DIRS = [
+    '/log/catalina/',
+    '/cache/agentLog/',
+    '/log/nginx/',
+]
+
+@app.route('/api/logs/list', methods=['GET'])
+def api_logs_list():
+    import glob
+    files = []
+    for log_dir in ALLOWED_LOG_DIRS:
+        if not os.path.isdir(log_dir):
+            continue
+        for path in glob.glob(os.path.join(log_dir, '**', '*'), recursive=True):
+            real = os.path.realpath(path)
+            if not any(real.startswith(os.path.realpath(d)) for d in ALLOWED_LOG_DIRS):
+                continue
+            if os.path.isfile(real):
+                stat = os.stat(real)
+                files.append({
+                    'path': path,
+                    'name': os.path.basename(path),
+                    'size': stat.st_size,
+                    'modified': stat.st_mtime,
+                })
+    files.sort(key=lambda x: x['modified'], reverse=True)
+    return jsonify(files)
+
+@app.route('/api/logs/analyze', methods=['POST'])
+def api_logs_analyze():
+    try:
+        data = request.json
+        log_path = data.get('logPath', '')
+        query = data.get('query', '')
+
+        if not log_path:
+            return jsonify({"error": "logPath가 필요합니다"}), 400
+
+        real_path = os.path.realpath(log_path)
+        allowed = any(real_path.startswith(os.path.realpath(d)) for d in ALLOWED_LOG_DIRS)
+        if not allowed:
+            return jsonify({"error": "허용되지 않은 경로입니다"}), 403
+
+        if not os.path.isfile(real_path):
+            return jsonify({"error": "파일을 찾을 수 없습니다"}), 404
+
+        with open(real_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        if len(content) > 50000:
+            content = content[-50000:]  # tail
+
+        if query:
+            user_msg = f"다음 로그에서 '{query}'를 찾아 분석해줘:\n\n{content}"
+        else:
+            user_msg = f"다음 로그의 오류/경고/이상 항목을 분석해줘:\n\n{content}"
+
+        system = "당신은 이노티움 보안 솔루션 서버 로그 분석 전문가입니다. 로그에서 오류, 경고, 이상 패턴을 찾아 한국어로 명확하게 설명해주세요."
+        result = call_claude(system, user_msg)
+        return jsonify({"success": True, "result": result, "file": os.path.basename(log_path)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

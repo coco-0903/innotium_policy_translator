@@ -136,6 +136,27 @@ body {
     letter-spacing: 0.02em;
 }
 
+.btn-manager {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(255, 107, 0, 0.1);
+    border: 1px solid rgba(255, 107, 0, 0.35);
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    margin-right: 16px;
+}
+.btn-manager:hover {
+    background: rgba(255, 107, 0, 0.2);
+    border-color: var(--accent);
+    color: #fff;
+}
+
 .header__right {
     display: flex;
     align-items: center;
