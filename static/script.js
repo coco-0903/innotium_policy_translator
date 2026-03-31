@@ -534,6 +534,9 @@ async function analyze() {
                 resultContent.innerHTML = '<pre>' + data.result + '</pre>';
             }
 
+            // Reset feedback buttons
+            document.querySelectorAll('.btn-feedback').forEach(b => b.classList.remove('active'));
+
             loadingState.style.display = 'none';
             resultState.style.display = 'flex';
         } else {
@@ -740,6 +743,7 @@ async function analyzeLog(path, name, itemEl) {
             } else {
                 resultContent.innerHTML = '<pre>' + data.result + '</pre>';
             }
+            document.querySelectorAll('.btn-feedback').forEach(b => b.classList.remove('active'));
             loadingState.style.display = 'none';
             resultState.style.display = 'flex';
         } else {
@@ -751,6 +755,37 @@ async function analyzeLog(path, name, itemEl) {
         showToast('서버 연결 실패: ' + err.message);
         loadingState.style.display = 'none';
         emptyState.style.display = 'flex';
+    }
+}
+
+// ═══ Feedback ═══
+
+async function submitFeedback(rating) {
+    if (!lastResult) return;
+
+    const policyText = document.getElementById('policyInput').value.trim();
+    const goodBtn = document.querySelector('.btn-feedback--good');
+    const badBtn = document.querySelector('.btn-feedback--bad');
+
+    // Visual feedback
+    goodBtn.classList.toggle('active', rating === 1);
+    badBtn.classList.toggle('active', rating === -1);
+
+    try {
+        await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                policy: policyText,
+                result: lastResult,
+                feature: currentFeature,
+                rating,
+                product: ''
+            })
+        });
+        showToast(rating === 1 ? '좋은 평가 감사합니다! 학습에 활용됩니다.' : '피드백 저장됨');
+    } catch {
+        showToast('피드백 저장 실패');
     }
 }
 

@@ -11,6 +11,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import json
+import logging
+import logging.handlers
 from datetime import datetime
 from parser import parse_input
 import anthropic
@@ -21,8 +23,56 @@ try:
 except ImportError:
     pass
 
+# ═══════════════════════════════════════════════════
+# 로깅 설정
+# ═══════════════════════════════════════════════════
+LOG_DIR = os.getenv('LOG_DIR', './logs')
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger('policy_analyzer')
+logger.setLevel(logging.INFO)
+
+_log_file = os.path.join(LOG_DIR, 'app.log')
+_handler = logging.handlers.RotatingFileHandler(
+    _log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8'
+)
+_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'
+))
+logger.addHandler(_handler)
+logger.addHandler(logging.StreamHandler())
+
+# ═══════════════════════════════════════════════════
+# Flask 앱 설정
+# ═══════════════════════════════════════════════════
 app = Flask(__name__)
-CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
+
+_ALLOWED_ORIGINS = os.getenv(
+    'ALLOWED_ORIGINS',
+    'http://192.168.11.97:40000,http://192.168.11.97:40001,'
+    'http://192.168.11.97:40010,http://127.0.0.1:5000,http://localhost:5000'
+).split(',')
+CORS(app, origins=[o.strip() for o in _ALLOWED_ORIGINS])
+
+# Rate limiting
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(
+        get_remote_address,
+        app=app,
+        default_limits=["300 per hour"],
+        storage_uri="memory://",
+    )
+    _limiter_available = True
+except ImportError:
+    _limiter_available = False
+    class _NoopLimiter:
+        def limit(self, *a, **kw):
+            return lambda f: f
+    limiter = _NoopLimiter()
+    logger.warning("flask-limiter 미설치 — rate limiting 비활성화")
 
 # ═══════════════════════════════════════════════════
 # Claude API 설정
@@ -30,8 +80,9 @@ CORS(app)
 API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 MODEL_NAME = 'claude-sonnet-4-6'
 
-client = anthropic.Anthropic(api_key=API_KEY)
+client = anthropic.Anthropic(api_key=API_KEY, timeout=60.0)
 
+logger.info(f"Policy Analyzer v3.0 시작 — 모델: {MODEL_NAME}")
 print(f"[✓] Claude 모델: {MODEL_NAME}")
 print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
 
@@ -39,6 +90,7 @@ print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
 def call_claude(system_prompt, user_message):
     """Claude API 호출"""
     try:
+        logger.info(f"Claude API 호출 — 입력 길이: {len(user_message)}")
         response = client.messages.create(
             model=MODEL_NAME,
             max_tokens=8192,
@@ -46,9 +98,30 @@ def call_claude(system_prompt, user_message):
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}]
         )
-        return response.content[0].text
+        result = response.content[0].text
+        logger.info(f"Claude API 완료 — 출력 길이: {len(result)}")
+        return result
+    except anthropic.APITimeoutError:
+        logger.error("Claude API 타임아웃 (60초 초과)")
+        return "AI 응답 시간 초과 (60초). 입력이 너무 크거나 서버 부하가 높습니다. 잠시 후 재시도해주세요."
     except Exception as e:
+        logger.error(f"Claude API 오류: {e}")
         return f"AI 호출 오류: {str(e)}"
+
+
+def _build_few_shot(feature: str, product: str = '') -> str:
+    """DB에서 좋은 평가 예시를 가져와 few-shot 블록 생성"""
+    try:
+        examples = get_feedback_examples(feature, product, limit=3)
+        if not examples:
+            return ""
+        parts = ["[참고 사례 — 아래는 실제 좋은 분석 예시입니다]\n"]
+        for i, ex in enumerate(examples, 1):
+            parts.append(f"--- 예시 {i} ---\n입력:\n{ex['policy_json'][:800]}\n\n출력:\n{ex['analysis_result'][:1200]}\n")
+        parts.append("--- 위 예시 참고하여 분석하세요 ---\n\n")
+        return '\n'.join(parts)
+    except Exception:
+        return ""
 
 
 # ═══════════════════════════════════════════════════
@@ -814,7 +887,7 @@ DIAGNOSE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제
 # 라우트
 # ═══════════════════════════════════════════════════
 
-from db import get_dashboard, get_all_policies, get_policy_detail
+from db import get_dashboard, get_all_policies, get_policy_detail, save_feedback, get_feedback_examples
 import db as _db_module
 
 @app.route('/')
@@ -830,6 +903,7 @@ def health_check():
     return jsonify({"status": "OK", "service": "Policy Analyzer", "version": "2.0", "products": 6})
 
 @app.route('/api/translate', methods=['POST'])
+@limiter.limit("20 per minute")
 def translate_policy():
     try:
         data = request.json
@@ -849,7 +923,11 @@ def translate_policy():
         if parsed['input_type'] not in ('clean_json', 'clean_json_array'):
             meta = f"\n[파서 정보] 입력유형: {parsed['input_type']}, 추출 정책: {parsed['policy_count']}개, 제품: {', '.join(parsed['products_found'])}\n"
 
-        user_msg = f"{meta}\n아래 정책 데이터를 분석하여 자연어로 번역해주세요:\n\n{policy_text}"
+        # Few-Shot 예시 주입
+        product_hint = parsed['products_found'][0] if parsed['products_found'] else ''
+        few_shot = _build_few_shot('translate', product_hint)
+
+        user_msg = f"{few_shot}{meta}\n아래 정책 데이터를 분석하여 자연어로 번역해주세요:\n\n{policy_text}"
         return jsonify({
             "success": True,
             "result": call_claude(TRANSLATE_PROMPT, user_msg),
@@ -864,6 +942,7 @@ def translate_policy():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/simulate', methods=['POST'])
+@limiter.limit("20 per minute")
 def simulate_policy():
     try:
         data = request.json
@@ -877,12 +956,16 @@ def simulate_policy():
         parsed = parse_input(policy_json)
         policy_text = parsed['clean_json']
 
-        user_msg = f"정책 데이터:\n{policy_text}\n\n사용자 질의:\n{query}"
+        product_hint = parsed['products_found'][0] if parsed['products_found'] else ''
+        few_shot = _build_few_shot('simulate', product_hint)
+
+        user_msg = f"{few_shot}정책 데이터:\n{policy_text}\n\n사용자 질의:\n{query}"
         return jsonify({"success": True, "result": call_claude(SIMULATE_PROMPT, user_msg), "feature": "simulate"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/diagnose', methods=['POST'])
+@limiter.limit("20 per minute")
 def diagnose_policy():
     try:
         data = request.json
@@ -896,7 +979,10 @@ def diagnose_policy():
         if parsed['policy_count'] == 0 and parsed['input_type'] == 'no_json_found':
             return jsonify({"error": "입력에서 정책 데이터를 찾지 못했습니다."}), 400
 
-        user_msg = f"아래 정책 데이터를 진단해주세요:\n\n{policy_text}"
+        product_hint = parsed['products_found'][0] if parsed['products_found'] else ''
+        few_shot = _build_few_shot('diagnose', product_hint)
+
+        user_msg = f"{few_shot}아래 정책 데이터를 진단해주세요:\n\n{policy_text}"
         return jsonify({"success": True, "result": call_claude(DIAGNOSE_PROMPT, user_msg), "feature": "diagnose"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -937,6 +1023,29 @@ def api_policy_detail(product, policy_id):
             return jsonify(result), 404
         return jsonify(result)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── 피드백 엔드포인트 (Few-Shot 예제 축적) ───
+
+@app.route('/api/feedback', methods=['POST'])
+def api_feedback():
+    try:
+        data = request.json
+        policy_json = data.get('policy', '')
+        result = data.get('result', '')
+        feature = data.get('feature', '')
+        rating = int(data.get('rating', 0))
+        product = data.get('product', '')
+
+        if not policy_json or not result or not feature or rating not in (1, -1):
+            return jsonify({"error": "필드 누락 또는 잘못된 rating (1/-1)"}), 400
+
+        save_feedback(policy_json, result, feature, rating, product)
+        logger.info(f"피드백 저장 — feature={feature}, rating={rating}, product={product}")
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"피드백 저장 오류: {e}")
         return jsonify({"error": str(e)}), 500
 
 

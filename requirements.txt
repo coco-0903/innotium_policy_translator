@@ -1,6 +1,8 @@
 flask
 flask-cors
+flask-limiter
 anthropic
 python-dotenv
 pymysql
+DBUtils
 gunicorn

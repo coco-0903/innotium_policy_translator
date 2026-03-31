@@ -797,6 +797,40 @@ body {
     animation: fadeIn 0.4s ease-out;
 }
 
+/* ═══ Feedback Buttons ═══ */
+.feedback-btns {
+    display: flex;
+    gap: 4px;
+}
+
+.btn-feedback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    color: var(--text-muted);
+}
+
+.btn-feedback--good:hover,
+.btn-feedback--good.active {
+    border-color: var(--green);
+    background: var(--green-glow);
+    color: var(--green);
+}
+
+.btn-feedback--bad:hover,
+.btn-feedback--bad.active {
+    border-color: var(--red);
+    background: var(--red-glow);
+    color: var(--red);
+}
+
 /* ═══ DB Browser ═══ */
 .db-browser,
 .log-browser {
