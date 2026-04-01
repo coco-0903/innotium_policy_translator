@@ -151,7 +151,7 @@ def get_dashboard() -> dict:
                     result['products'][product] = -1
 
             try:
-                cur.execute("SELECT COUNT(*) AS cnt FROM tb_users")
+                cur.execute("SELECT COUNT(*) AS cnt FROM tb_users WHERE member_status = 1")
                 result['users'] = cur.fetchone()['cnt']
             except Exception:
                 pass
@@ -207,6 +207,194 @@ def get_policy_detail(product: str, policy_id: int) -> dict:
         return _row_to_camel(row)
     except Exception as e:
         return {'error': str(e)}
+
+
+# ═══════════════════════════════════════════════════
+# Phase 2-1: 통합 정책 조립
+# ═══════════════════════════════════════════════════
+
+# unified 정책에서 각 제품 FK 컬럼명 (unified 테이블이 각 정책 ID를 컬럼으로 보유한다고 가정)
+_UNIFIED_FK_MAP = {
+    'securezone':        ('tb_secure_zone_agent_policy',         'sz_agent_policy_id'),
+    'securezone_acl':    ('tb_secure_zone_access_control_policy','sz_access_control_policy_id'),
+    'controlsuite':      ('tb_control_suite',                    'csu_id'),
+    'ransomcruncher':    ('tb_ransom_cruncher_detect_policy',    'rc_detect_policy_id'),
+    'ransomcruncher_rdp':('tb_ransom_cruncher_rdp_policy',       'rc_rdp_policy_id'),
+    'npouch':            ('tb_npouch_policy',                    'np_policy_id'),
+    'npouch_origin':     ('tb_npouch_origin_protect_policy',     'np_origin_protect_policy_id'),
+    'innomark':          ('tb_inno_mark_policy',                 'im_policy_id'),
+    'innomark_rdp':      ('tb_inno_mark_rdp_policy',             'im_rdp_policy_id'),
+    'lizardbackup':      ('tb_lizard_backup_policy',             'lb_policy_id'),
+    'lizardbackup_agent':('tb_lizard_agent_policy',              'lb_agent_policy_id'),
+}
+
+
+def get_unified_policy_full(policy_id: int) -> dict:
+    """통합 정책(unified) + 연결된 제품별 정책 전체 조립
+    tb_unified_agent_policy의 FK 컬럼으로 각 제품 정책을 JOIN한다.
+    """
+    result = {'unified': {}, 'products': {}, 'policy_id': policy_id}
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM tb_unified_agent_policy WHERE unified_agent_policy_id = %s",
+                (policy_id,)
+            )
+            unified_row = cur.fetchone()
+            if not unified_row:
+                return {'error': f'통합 정책 #{policy_id}를 찾을 수 없습니다'}
+            result['unified'] = _row_to_camel(unified_row)
+
+            # 각 제품 정책 FK로 JOIN
+            for product_key, (table, fk_col) in _UNIFIED_FK_MAP.items():
+                fk_value = unified_row.get(fk_col)
+                if not fk_value:
+                    continue
+                try:
+                    cur.execute(
+                        f"SELECT * FROM `{table}` WHERE `{fk_col}` = %s",
+                        (fk_value,)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        result['products'][product_key] = _row_to_camel(row)
+                except Exception:
+                    pass  # 해당 제품 정책이 없으면 건너뜀
+        conn.close()
+    except Exception as e:
+        result['error'] = str(e)
+    return result
+
+
+# ═══════════════════════════════════════════════════
+# Phase 2-2: 사용자/부서별 정책 조회
+# ═══════════════════════════════════════════════════
+
+def get_users_list(limit: int = 200) -> list:
+    """실 사용자 목록 (member_status=1)"""
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id, user_name, user_email, member_status, create_datetime "
+                "FROM tb_users WHERE member_status = 1 ORDER BY user_id LIMIT %s",
+                (limit,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        return [_row_to_camel(r) for r in (rows or [])]
+    except Exception as e:
+        return [{'error': str(e)}]
+
+
+def get_groups_list(limit: int = 200) -> list:
+    """부서/그룹 목록"""
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT group_id, group_name, create_datetime "
+                "FROM tb_groups ORDER BY group_id LIMIT %s",
+                (limit,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        return [_row_to_camel(r) for r in (rows or [])]
+    except Exception as e:
+        return [{'error': str(e)}]
+
+
+def get_user_policies(user_id: int) -> dict:
+    """사용자에 할당된 통합 정책 조회 (tb_user_agent_policy JOIN)"""
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT user_id, user_name, user_email FROM tb_users WHERE user_id = %s",
+                (user_id,)
+            )
+            user = cur.fetchone()
+
+            cur.execute(
+                """SELECT u.unified_agent_policy_id,
+                          p.unified_agent_policy_name AS policy_name,
+                          p.create_datetime, p.update_datetime
+                   FROM tb_user_agent_policy u
+                   LEFT JOIN tb_unified_agent_policy p
+                       ON u.unified_agent_policy_id = p.unified_agent_policy_id
+                   WHERE u.user_id = %s""",
+                (user_id,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        return {
+            'user': _row_to_camel(user) if user else {},
+            'policies': [_row_to_camel(r) for r in (rows or [])]
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def get_group_policies(group_id: int) -> dict:
+    """부서에 할당된 통합 정책 조회 (tb_group_agent_policy JOIN)"""
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT group_id, group_name FROM tb_groups WHERE group_id = %s",
+                (group_id,)
+            )
+            group = cur.fetchone()
+
+            cur.execute(
+                """SELECT g.unified_agent_policy_id,
+                          p.unified_agent_policy_name AS policy_name,
+                          p.create_datetime, p.update_datetime
+                   FROM tb_group_agent_policy g
+                   LEFT JOIN tb_unified_agent_policy p
+                       ON g.unified_agent_policy_id = p.unified_agent_policy_id
+                   WHERE g.group_id = %s""",
+                (group_id,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        return {
+            'group': _row_to_camel(group) if group else {},
+            'policies': [_row_to_camel(r) for r in (rows or [])]
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+# ═══════════════════════════════════════════════════
+# Phase 2-4: 정책 변경 이력 타임라인
+# ═══════════════════════════════════════════════════
+
+def get_policy_timeline(limit: int = 30) -> list:
+    """전체 정책 테이블에서 최근 변경 이력 (update_datetime 기준 정렬)"""
+    items = []
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            for product, (table, pk, name_col) in PRODUCT_TABLE_MAP.items():
+                try:
+                    cur.execute(
+                        f"SELECT %s AS product, `{pk}` AS policy_id, "
+                        f"`{name_col}` AS policy_name, "
+                        f"create_datetime, update_datetime "
+                        f"FROM `{table}` ORDER BY update_datetime DESC LIMIT 10",
+                        (product,)
+                    )
+                    rows = cur.fetchall()
+                    items.extend([_row_to_camel(r) for r in rows])
+                except Exception:
+                    pass
+        conn.close()
+        items.sort(key=lambda x: x.get('updateDatetime') or x.get('createDatetime') or '', reverse=True)
+        return items[:limit]
+    except Exception as e:
+        return [{'error': str(e)}]
 
 
 # ═══════════════════════════════════════════════════

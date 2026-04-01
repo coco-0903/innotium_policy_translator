@@ -233,67 +233,6 @@ const SAMPLE_POLICY = {
 };
 
 
-// ═══ Dashboard ═══
-
-const PRODUCT_LABELS = {
-    securezone:        'SecureZone',
-    securezone_acl:    'SecureZone ACL',
-    controlsuite:      'ControlSuite',
-    ransomcruncher:    'RansomCruncher',
-    ransomcruncher_rdp:'RC RDP',
-    npouch:            'nPouch',
-    npouch_origin:     'nPouch 원본보호',
-    innomark:          'innoMark',
-    innomark_rdp:      'IM RDP',
-    lizardbackup:      'LizardBackup',
-    lizardbackup_agent:'LB 에이전트',
-    unified:           '통합정책',
-};
-
-async function loadDashboard() {
-    const badge = document.getElementById('dbStatusBadge');
-    const statsEl = document.getElementById('dashboardStats');
-    const policiesEl = document.getElementById('dashboardPolicies');
-
-    try {
-        const res = await fetch('/api/dashboard');
-        const data = await res.json();
-
-        if (!data.connected) {
-            badge.textContent = 'DB 연결 실패';
-            badge.className = 'db-status db-status--error';
-            policiesEl.innerHTML = `<div class="dash-error">DB 연결 오류: ${data.error || '알 수 없음'}</div>`;
-            return;
-        }
-
-        badge.textContent = '연결됨';
-        badge.className = 'db-status db-status--ok';
-
-        // 사용자/부서
-        document.getElementById('statUsers').textContent = data.users ?? '-';
-        document.getElementById('statGroups').textContent = data.groups ?? '-';
-
-        // 제품별 정책 수
-        const products = data.products || {};
-        policiesEl.innerHTML = '';
-        for (const [key, count] of Object.entries(products)) {
-            const label = PRODUCT_LABELS[key] || key;
-            const card = document.createElement('div');
-            card.className = 'dash-policy-card' + (count > 0 ? ' dash-policy-card--has-data' : '');
-            card.innerHTML = `
-                <span class="dash-policy-card__name">${label}</span>
-                <span class="dash-policy-card__count">${count < 0 ? '?' : count}</span>
-            `;
-            policiesEl.appendChild(card);
-        }
-    } catch (err) {
-        badge.textContent = 'DB 오프라인';
-        badge.className = 'db-status db-status--error';
-        policiesEl.innerHTML = `<div class="dash-error">서버 연결 실패</div>`;
-    }
-}
-
-
 // ═══ Initialization ═══
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -346,9 +285,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (files.length > 0) readMultipleFiles(files);
         fileInput.value = '';  // 같은 파일 재업로드 가능하게
     });
-
-    // 대시보드 초기 로드
-    loadDashboard();
 
     // Configure marked
     if (typeof marked !== 'undefined') {
@@ -668,6 +604,19 @@ async function loadPolicies() {
                 <span class="policy-item__id">#${p.id}</span>
                 ${dateStr ? `<span class="policy-item__date">${dateStr}</span>` : ''}
             `;
+            // unified 정책이면 "전체 조립" 버튼 추가
+            if (product === 'unified') {
+                const assembleBtn = document.createElement('button');
+                assembleBtn.className = 'btn-assemble';
+                assembleBtn.title = '통합 정책 전체 조립';
+                assembleBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`;
+                assembleBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    loadFullPolicy(p.id, p.name, item);
+                });
+                item.appendChild(assembleBtn);
+            }
+
             item.addEventListener('click', () => loadPolicyDetail(product, p.id, p.name, item));
             listEl.appendChild(item);
         });
@@ -738,7 +687,6 @@ async function refreshLogList() {
             'catalina': 'Tomcat Catalina',
             'agent': '에이전트 로그',
             'nginx': 'Nginx',
-            'policy-analyzer': 'Policy Analyzer',
             'other': '기타'
         };
 
@@ -858,4 +806,274 @@ function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + 'B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
     return (bytes / (1024 * 1024)).toFixed(1) + 'MB';
+}
+
+
+// ═══ Phase 2: DB Sub-mode ═══
+
+function switchDbMode(mode, btn) {
+    document.querySelectorAll('.db-mode-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const modes = ['policy', 'user', 'group', 'timeline'];
+    modes.forEach(m => {
+        const el = document.getElementById('dbMode' + m.charAt(0).toUpperCase() + m.slice(1));
+        if (el) el.style.display = (m === mode) ? '' : 'none';
+    });
+}
+
+// ─── Phase 2-1: 통합 정책 전체 조립 ───
+
+async function loadFullPolicy(policyId, policyName, itemEl) {
+    document.querySelectorAll('.policy-item').forEach(el => el.classList.remove('selected'));
+    itemEl.classList.add('selected');
+
+    showToast('통합 정책 조립 중...');
+
+    try {
+        const res = await fetch(`/api/policies/unified/${policyId}/full`);
+        const data = await res.json();
+
+        if (data.error) {
+            showToast('오류: ' + data.error);
+            return;
+        }
+
+        const formatted = JSON.stringify(data, null, 2);
+        document.getElementById('policyInput').value = formatted;
+        document.getElementById('charCount').textContent = formatted.length + '자';
+
+        const translateTab = document.querySelector('[data-feature="translate"]');
+        selectTab(translateTab);
+
+        const productCount = Object.keys(data.products || {}).length;
+        showToast(`"${policyName}" 통합 조립 완료 — ${productCount}개 제품 정책 포함`);
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    }
+}
+
+// ─── Phase 2-2: 사용자별 조회 ───
+
+const LOADING_HTML = '<div class="browser-loading"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 불러오는 중...</div>';
+
+async function loadUserList() {
+    const listEl = document.getElementById('userList');
+    listEl.innerHTML = LOADING_HTML;
+
+    try {
+        const res = await fetch('/api/users');
+        const data = await res.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`;
+            return;
+        }
+
+        const users = data.users || [];
+        if (users.length === 0) {
+            listEl.innerHTML = '<div class="browser-empty">사용자가 없습니다</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        users.forEach(u => {
+            const item = document.createElement('div');
+            item.className = 'policy-item';
+            item.innerHTML = `
+                <span class="policy-item__icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                    </svg>
+                </span>
+                <span class="policy-item__name">${u.userName || u.userId || '(이름 없음)'}</span>
+                <span class="policy-item__id">#${u.userId}</span>
+                ${u.userEmail ? `<span class="policy-item__date">${u.userEmail}</span>` : ''}
+            `;
+            item.addEventListener('click', () => loadUserPolicies(u.userId, u.userName || String(u.userId), item));
+            listEl.appendChild(item);
+        });
+
+        showToast(`사용자 ${users.length}명 조회 완료`);
+    } catch (err) {
+        listEl.innerHTML = `<div class="browser-empty">연결 오류: ${err.message}</div>`;
+    }
+}
+
+async function loadUserPolicies(userId, userName, itemEl) {
+    document.querySelectorAll('#userList .policy-item').forEach(el => el.classList.remove('selected'));
+    itemEl.classList.add('selected');
+
+    showToast(`${userName} 정책 조회 중...`);
+
+    try {
+        const res = await fetch(`/api/users/${userId}/policies`);
+        const data = await res.json();
+
+        if (data.error) {
+            showToast('오류: ' + data.error);
+            return;
+        }
+
+        const policies = data.policies || [];
+        if (policies.length === 0) {
+            showToast(`${userName}: 할당된 정책 없음`);
+            return;
+        }
+
+        // 통합 정책 목록을 JSON으로 구성해 번역 탭으로 전달
+        const formatted = JSON.stringify({ user: data.user, assigned_policies: policies }, null, 2);
+        document.getElementById('policyInput').value = formatted;
+        document.getElementById('charCount').textContent = formatted.length + '자';
+
+        const translateTab = document.querySelector('[data-feature="translate"]');
+        selectTab(translateTab);
+
+        showToast(`${userName} — ${policies.length}개 정책 로드 완료`);
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    }
+}
+
+// ─── Phase 2-2: 부서별 조회 ───
+
+async function loadGroupList() {
+    const listEl = document.getElementById('groupList');
+    listEl.innerHTML = LOADING_HTML;
+
+    try {
+        const res = await fetch('/api/groups');
+        const data = await res.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`;
+            return;
+        }
+
+        const groups = data.groups || [];
+        if (groups.length === 0) {
+            listEl.innerHTML = '<div class="browser-empty">부서가 없습니다</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        groups.forEach(g => {
+            const item = document.createElement('div');
+            item.className = 'policy-item';
+            item.innerHTML = `
+                <span class="policy-item__icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                </span>
+                <span class="policy-item__name">${g.groupName || '(이름 없음)'}</span>
+                <span class="policy-item__id">#${g.groupId}</span>
+            `;
+            item.addEventListener('click', () => loadGroupPolicies(g.groupId, g.groupName || String(g.groupId), item));
+            listEl.appendChild(item);
+        });
+
+        showToast(`부서 ${groups.length}개 조회 완료`);
+    } catch (err) {
+        listEl.innerHTML = `<div class="browser-empty">연결 오류: ${err.message}</div>`;
+    }
+}
+
+async function loadGroupPolicies(groupId, groupName, itemEl) {
+    document.querySelectorAll('#groupList .policy-item').forEach(el => el.classList.remove('selected'));
+    itemEl.classList.add('selected');
+
+    showToast(`${groupName} 정책 조회 중...`);
+
+    try {
+        const res = await fetch(`/api/groups/${groupId}/policies`);
+        const data = await res.json();
+
+        if (data.error) {
+            showToast('오류: ' + data.error);
+            return;
+        }
+
+        const policies = data.policies || [];
+        if (policies.length === 0) {
+            showToast(`${groupName}: 할당된 정책 없음`);
+            return;
+        }
+
+        const formatted = JSON.stringify({ group: data.group, assigned_policies: policies }, null, 2);
+        document.getElementById('policyInput').value = formatted;
+        document.getElementById('charCount').textContent = formatted.length + '자';
+
+        const translateTab = document.querySelector('[data-feature="translate"]');
+        selectTab(translateTab);
+
+        showToast(`${groupName} — ${policies.length}개 정책 로드 완료`);
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    }
+}
+
+// ─── Phase 2-4: 변경 이력 타임라인 ───
+
+const PRODUCT_LABELS = {
+    securezone: 'SecureZone', securezone_acl: 'SecureZone ACL',
+    controlsuite: 'ControlSuite', ransomcruncher: 'RansomCruncher',
+    ransomcruncher_rdp: 'RansomCruncher RDP', npouch: 'nPouch',
+    npouch_origin: 'nPouch 원본보호', innomark: 'innoMark',
+    innomark_rdp: 'innoMark RDP', lizardbackup: 'LizardBackup',
+    lizardbackup_agent: 'LizardBackup Agent', unified: '통합 정책',
+};
+
+async function loadTimeline() {
+    const listEl = document.getElementById('timelineList');
+    listEl.innerHTML = LOADING_HTML;
+
+    try {
+        const res = await fetch('/api/timeline?limit=30');
+        const data = await res.json();
+
+        if (data.error) {
+            listEl.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`;
+            return;
+        }
+
+        const items = data.timeline || [];
+        if (items.length === 0) {
+            listEl.innerHTML = '<div class="browser-empty">변경 이력이 없습니다</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        items.forEach(t => {
+            const item = document.createElement('div');
+            item.className = 'policy-item timeline-item';
+
+            const updateDate = t.updateDatetime || t.createDatetime || '';
+            const dateStr = updateDate ? new Date(updateDate).toLocaleString('ko-KR') : '';
+            const isUpdated = t.updateDatetime && t.updateDatetime !== t.createDatetime;
+            const productLabel = PRODUCT_LABELS[t.product] || t.product;
+
+            item.innerHTML = `
+                <span class="policy-item__icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </span>
+                <span class="policy-item__name">${t.policyName || '(이름 없음)'}</span>
+                <span class="policy-item__id" style="color:var(--accent)">${productLabel}</span>
+                ${dateStr ? `<span class="policy-item__date">${isUpdated ? '수정 ' : '생성 '}${dateStr}</span>` : ''}
+            `;
+            item.addEventListener('click', () => loadPolicyDetail(t.product, t.policyId, t.policyName, item));
+            listEl.appendChild(item);
+        });
+
+        showToast(`변경 이력 ${items.length}건 조회 완료`);
+    } catch (err) {
+        listEl.innerHTML = `<div class="browser-empty">연결 오류: ${err.message}</div>`;
+    }
 }

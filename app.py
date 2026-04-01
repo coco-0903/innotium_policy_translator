@@ -50,8 +50,8 @@ app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB
 
 _ALLOWED_ORIGINS = os.getenv(
     'ALLOWED_ORIGINS',
-    'http://172.30.1.44:40000,http://172.30.1.44:40001,'
-    'http://172.30.1.44:40010,http://127.0.0.1:5000,http://localhost:5000'
+    'http://192.168.11.97:40000,http://192.168.11.97:40001,'
+    'http://192.168.11.97:40010,http://127.0.0.1:5000,http://localhost:5000'
 ).split(',')
 CORS(app, origins=[o.strip() for o in _ALLOWED_ORIGINS])
 
@@ -82,9 +82,9 @@ MODEL_NAME = 'claude-sonnet-4-6'
 
 client = anthropic.Anthropic(api_key=API_KEY, timeout=60.0)
 
-logger.info(f"Policy Analyzer v3.5 시작 — 모델: {MODEL_NAME}")
+logger.info(f"Policy Analyzer v3.0 시작 — 모델: {MODEL_NAME}")
 print(f"[✓] Claude 모델: {MODEL_NAME}")
-print("[✓] Policy Analyzer v3.5 — 6개 제품 통합 + 대시보드 + 운영 자동화")
+print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
 
 
 def call_claude(system_prompt, user_message):
@@ -887,7 +887,12 @@ DIAGNOSE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제
 # 라우트
 # ═══════════════════════════════════════════════════
 
-from db import get_dashboard, get_all_policies, get_policy_detail, save_feedback, get_feedback_examples
+from db import (
+    get_dashboard, get_all_policies, get_policy_detail, save_feedback, get_feedback_examples,
+    get_unified_policy_full,
+    get_users_list, get_groups_list, get_user_policies, get_group_policies,
+    get_policy_timeline,
+)
 import db as _db_module
 
 @app.route('/')
@@ -900,7 +905,7 @@ def serve_static(path):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "OK", "service": "Policy Analyzer", "version": "3.5", "products": 6})
+    return jsonify({"status": "OK", "service": "Policy Analyzer", "version": "2.0", "products": 6})
 
 @app.route('/api/translate', methods=['POST'])
 @limiter.limit("20 per minute")
@@ -1049,24 +1054,94 @@ def api_feedback():
         return jsonify({"error": str(e)}), 500
 
 
+# ─── Phase 2-1: 통합 정책 조립 ───
+
+@app.route('/api/policies/<product>/<int:policy_id>/full', methods=['GET'])
+def api_policy_full(product, policy_id):
+    """통합 정책 전체 조립 (unified + 연결 제품 정책 JOIN)"""
+    try:
+        if product != 'unified':
+            return jsonify({"error": "통합 정책 조립은 unified 제품만 지원합니다"}), 400
+        result = get_unified_policy_full(policy_id)
+        if 'error' in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 2-2: 사용자/부서별 정책 조회 ───
+
+@app.route('/api/users', methods=['GET'])
+def api_users():
+    """실 사용자 목록 (member_status=1)"""
+    try:
+        return jsonify({"users": get_users_list()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/users/<int:user_id>/policies', methods=['GET'])
+def api_user_policies(user_id):
+    """특정 사용자의 할당 정책"""
+    try:
+        result = get_user_policies(user_id)
+        if 'error' in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/groups', methods=['GET'])
+def api_groups():
+    """부서/그룹 목록"""
+    try:
+        return jsonify({"groups": get_groups_list()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>/policies', methods=['GET'])
+def api_group_policies(group_id):
+    """특정 부서의 할당 정책"""
+    try:
+        result = get_group_policies(group_id)
+        if 'error' in result:
+            return jsonify(result), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 2-4: 정책 변경 이력 타임라인 ───
+
+@app.route('/api/timeline', methods=['GET'])
+def api_timeline():
+    """전체 정책 테이블의 최근 변경 이력"""
+    try:
+        limit = min(int(request.args.get('limit', 30)), 100)
+        return jsonify({"timeline": get_policy_timeline(limit)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ─── 로그 파일 엔드포인트 ───
 
 ALLOWED_LOG_DIRS = [
     '/log/catalina/',
     '/cache/agentLog/',
     '/log/nginx/',
-    '/log/policy-analyzer/',
 ]
 
 @app.route('/api/logs/list', methods=['GET'])
 def api_logs_list():
     import glob
-    groups = {'catalina': [], 'agent': [], 'nginx': [], 'policy-analyzer': [], 'other': []}
+    groups = {'catalina': [], 'agent': [], 'nginx': [], 'other': []}
     dir_group_map = {
         '/log/catalina/': 'catalina',
         '/cache/agentLog/': 'agent',
         '/log/nginx/': 'nginx',
-        '/log/policy-analyzer/': 'policy-analyzer',
     }
     for log_dir in ALLOWED_LOG_DIRS:
         if not os.path.isdir(log_dir):

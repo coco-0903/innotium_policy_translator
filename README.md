@@ -5,7 +5,7 @@ SecureZone, RansomCruncher, nPouch, innoMark, LizardBackup, innoECM 6개 제품 
 
 ---
 
-## 현재 버전: v3.5
+## 현재 버전: v3.0
 
 ### 변경 이력
 
@@ -15,7 +15,6 @@ SecureZone, RansomCruncher, nPouch, innoMark, LizardBackup, innoECM 6개 제품 
 | v2.0 | 시뮬레이터 + 진단 탭 추가 |
 | v2.5 | UI 리디자인, 파일 드래그앤드롭 |
 | v3.0 | **Claude AI 전환**, **MariaDB 직접 연동**, 서버 배포 |
-| v3.5 | **대시보드 UI** (DB 현황 실시간), **patch_main.py** (자동 버튼 패치), `.env.example`, user/manager 양쪽 버튼, 로그 탭 policy-analyzer 추가 |
 
 ---
 
@@ -86,13 +85,13 @@ python app.py
 ## 서버 배포 (Rocky Linux 9.7)
 
 서버 정보:
-- IP: 172.30.1.44
+- IP: 192.168.11.97
 - 서비스 포트: 40010 (Nginx → Gunicorn 5000)
 - 앱 경로: /app/policy-analyzer/
 
 ```bash
 # 서버 접속
-ssh -i ~/.ssh/id_rsa root@172.30.1.44
+ssh root@192.168.11.97
 
 # 앱 배포
 cd /app/policy-analyzer
@@ -130,16 +129,14 @@ journalctl -u policy-analyzer -n 50
 
 ## 개발 로드맵
 
-### Phase 1 — 기능 완성 ✅
+### Phase 1 — 기능 완성 (현재)
 
 - [x] Claude API 전환 (Gemini → claude-sonnet-4-6)
 - [x] MariaDB 직접 연동 (db.py)
 - [x] 서버 배포 (Gunicorn + Nginx + systemd)
-- [x] 매니저 서버 ↔ Policy Analyzer 상호 링크 버튼 (manager + user 양쪽)
-- [x] Frontend DB 조회 UI — 제품 선택 → 정책 목록 → 클릭 → 바로 분석
-- [x] Frontend 로그 분석 탭 — 서버 로그 파일 트리 → AI 분석
-- [x] 대시보드 UI — 앱 시작 시 DB 연결 상태 + 제품별 정책 수 자동 표시
-- [x] patch_main.py — 매니저 업데이트 후 버튼 재패치 자동화
+- [x] 매니저 서버 ↔ Policy Analyzer 상호 링크 버튼
+- [ ] **Frontend DB 조회 UI** — 제품 선택 → 정책 목록 → 클릭 → 바로 분석
+- [ ] **Frontend 로그 분석 탭** — 서버 로그 파일 트리 → AI 분석
 
 ### Phase 2 — DB 고도화
 
@@ -201,7 +198,7 @@ CREATE TABLE policy_analysis_examples (
 
 ### Phase 4 — 안정성 & 운영
 
-- [ ] CORS 도메인 제한 (172.30.1.44만 허용)
+- [ ] CORS 도메인 제한 (192.168.11.97만 허용)
 - [ ] 요청 크기 제한 (Flask max_content_length)
 - [ ] Rate limiting (flask-limiter)
 - [ ] 구조화 에러 로깅 (JSON 포맷)
@@ -217,7 +214,8 @@ CREATE TABLE policy_analysis_examples (
 덮어씌워질 수 있음. 재패치 방법:
 
 ```bash
-ssh -i ~/.ssh/id_rsa root@172.30.1.44
+ssh root@192.168.11.97
+cd /project/apiFront
 python3 /app/policy-analyzer/patch_main.py
 ```
 

@@ -831,6 +831,56 @@ body {
     color: var(--red);
 }
 
+/* ═══ DB Sub-mode Tabs ═══ */
+.db-mode-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+    flex-shrink: 0;
+}
+
+.db-mode-tab {
+    padding: 4px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.db-mode-tab:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.db-mode-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+/* 통합 정책 조립 버튼 */
+.btn-assemble {
+    margin-left: auto;
+    padding: 3px 6px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-xs);
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.btn-assemble:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
 /* ═══ DB Browser ═══ */
 .db-browser,
 .log-browser {
@@ -1001,154 +1051,6 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 4px 4px 2px;
-}
-
-/* ═══════════════════════════════════════════
-   Dashboard (empty-state 내 DB 현황)
-   ═══════════════════════════════════════════ */
-
-.empty-state {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 20px 24px;
-    gap: 16px;
-    overflow-y: auto;
-}
-
-.dashboard {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.dashboard__header {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.dashboard__header svg {
-    color: var(--accent);
-    flex-shrink: 0;
-}
-
-.db-status {
-    margin-left: auto;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 20px;
-    letter-spacing: 0;
-    text-transform: none;
-}
-
-.db-status--ok {
-    background: rgba(16,185,129,0.15);
-    color: var(--green);
-    border: 1px solid rgba(16,185,129,0.3);
-}
-
-.db-status--error {
-    background: rgba(239,68,68,0.1);
-    color: var(--red);
-    border: 1px solid rgba(239,68,68,0.25);
-}
-
-.dashboard__stats {
-    display: flex;
-    gap: 8px;
-}
-
-.stat-card {
-    flex: 1;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.stat-card__label {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    font-weight: 500;
-}
-
-.stat-card__value {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-}
-
-.dashboard__policies {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 6px;
-}
-
-.dash-policy-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xs);
-    padding: 8px 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    opacity: 0.55;
-    transition: opacity 0.15s;
-}
-
-.dash-policy-card--has-data {
-    opacity: 1;
-    border-color: rgba(255,107,0,0.3);
-}
-
-.dash-policy-card__name {
-    font-size: 0.68rem;
-    color: var(--text-muted);
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.dash-policy-card__count {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    line-height: 1;
-}
-
-.dash-policy-card--has-data .dash-policy-card__count {
-    color: var(--accent);
-}
-
-.dash-error {
-    font-size: 0.78rem;
-    color: var(--red);
-    padding: 8px 0;
-}
-
-.empty-hint {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    padding: 4px 0 8px;
 }
 
 /* Toast notification */
