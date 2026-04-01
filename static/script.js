@@ -887,9 +887,9 @@ async function loadUserList() {
                         <circle cx="12" cy="7" r="4"/>
                     </svg>
                 </span>
-                <span class="policy-item__name">${u.userName || u.userId || '(이름 없음)'}</span>
-                <span class="policy-item__id">#${u.userId}</span>
-                ${u.userEmail ? `<span class="policy-item__date">${u.userEmail}</span>` : ''}
+                <span class="policy-item__name">${u.userName || '(이름 없음)'}</span>
+                <span class="policy-item__id">${u.memberId || u.userId}</span>
+                ${u.email ? `<span class="policy-item__date">${u.email}</span>` : ''}
             `;
             item.addEventListener('click', () => loadUserPolicies(u.userId, u.userName || String(u.userId), item));
             listEl.appendChild(item);

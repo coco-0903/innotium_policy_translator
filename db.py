@@ -213,27 +213,13 @@ def get_policy_detail(product: str, policy_id: int) -> dict:
 # Phase 2-1: 통합 정책 조립
 # ═══════════════════════════════════════════════════
 
-# unified 정책에서 각 제품 FK 컬럼명 (unified 테이블이 각 정책 ID를 컬럼으로 보유한다고 가정)
-_UNIFIED_FK_MAP = {
-    'securezone':        ('tb_secure_zone_agent_policy',         'sz_agent_policy_id'),
-    'securezone_acl':    ('tb_secure_zone_access_control_policy','sz_access_control_policy_id'),
-    'controlsuite':      ('tb_control_suite',                    'csu_id'),
-    'ransomcruncher':    ('tb_ransom_cruncher_detect_policy',    'rc_detect_policy_id'),
-    'ransomcruncher_rdp':('tb_ransom_cruncher_rdp_policy',       'rc_rdp_policy_id'),
-    'npouch':            ('tb_npouch_policy',                    'np_policy_id'),
-    'npouch_origin':     ('tb_npouch_origin_protect_policy',     'np_origin_protect_policy_id'),
-    'innomark':          ('tb_inno_mark_policy',                 'im_policy_id'),
-    'innomark_rdp':      ('tb_inno_mark_rdp_policy',             'im_rdp_policy_id'),
-    'lizardbackup':      ('tb_lizard_backup_policy',             'lb_policy_id'),
-    'lizardbackup_agent':('tb_lizard_agent_policy',              'lb_agent_policy_id'),
-}
-
-
 def get_unified_policy_full(policy_id: int) -> dict:
-    """통합 정책(unified) + 연결된 제품별 정책 전체 조립
-    tb_unified_agent_policy의 FK 컬럼으로 각 제품 정책을 JOIN한다.
+    """통합 정책 상세 조회
+    실제 DB 구조: tb_unified_agent_policy에는 제품별 FK 컬럼 없음.
+    제품별 정책 연결은 tb_user_agent_multi_policy / tb_group_agent_multi_policy를 통해 이뤄짐.
+    여기서는 unified 정책 기본 정보 + 해당 정책에 할당된 사용자/부서 현황을 반환.
     """
-    result = {'unified': {}, 'products': {}, 'policy_id': policy_id}
+    result = {'unified': {}, 'assigned_users': [], 'assigned_groups': [], 'policy_id': policy_id}
     try:
         conn = get_connection()
         with conn.cursor() as cur:
@@ -246,21 +232,34 @@ def get_unified_policy_full(policy_id: int) -> dict:
                 return {'error': f'통합 정책 #{policy_id}를 찾을 수 없습니다'}
             result['unified'] = _row_to_camel(unified_row)
 
-            # 각 제품 정책 FK로 JOIN
-            for product_key, (table, fk_col) in _UNIFIED_FK_MAP.items():
-                fk_value = unified_row.get(fk_col)
-                if not fk_value:
-                    continue
-                try:
-                    cur.execute(
-                        f"SELECT * FROM `{table}` WHERE `{fk_col}` = %s",
-                        (fk_value,)
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        result['products'][product_key] = _row_to_camel(row)
-                except Exception:
-                    pass  # 해당 제품 정책이 없으면 건너뜀
+            # 이 정책이 할당된 사용자 목록 (tb_user_agent_multi_policy → tb_users)
+            try:
+                cur.execute(
+                    """SELECT u.user_id, u.member_id, u.user_name
+                       FROM tb_user_agent_multi_policy m
+                       JOIN tb_users u ON m.user_id = u.user_id
+                       WHERE m.policy_id = %s AND u.member_status = 1
+                       LIMIT 50""",
+                    (policy_id,)
+                )
+                result['assigned_users'] = [_row_to_camel(r) for r in (cur.fetchall() or [])]
+            except Exception:
+                pass
+
+            # 이 정책이 할당된 부서 목록 (tb_group_agent_multi_policy → tb_groups)
+            try:
+                cur.execute(
+                    """SELECT g.group_id, g.group_name
+                       FROM tb_group_agent_multi_policy m
+                       JOIN tb_groups g ON m.group_id = g.group_id
+                       WHERE m.policy_id = %s
+                       LIMIT 50""",
+                    (policy_id,)
+                )
+                result['assigned_groups'] = [_row_to_camel(r) for r in (cur.fetchall() or [])]
+            except Exception:
+                pass
+
         conn.close()
     except Exception as e:
         result['error'] = str(e)
@@ -272,12 +271,14 @@ def get_unified_policy_full(policy_id: int) -> dict:
 # ═══════════════════════════════════════════════════
 
 def get_users_list(limit: int = 200) -> list:
-    """실 사용자 목록 (member_status=1)"""
+    """실 사용자 목록 (member_status=1)
+    실제 컬럼: user_id(PK int), member_id(로그인ID varchar), user_name, email
+    """
     try:
         conn = get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT user_id, user_name, user_email, member_status, create_datetime "
+                "SELECT user_id, member_id, user_name, email, member_status, create_datetime "
                 "FROM tb_users WHERE member_status = 1 ORDER BY user_id LIMIT %s",
                 (limit,)
             )
@@ -306,24 +307,26 @@ def get_groups_list(limit: int = 200) -> list:
 
 
 def get_user_policies(user_id: int) -> dict:
-    """사용자에 할당된 통합 정책 조회 (tb_user_agent_policy JOIN)"""
+    """사용자에 할당된 정책 조회
+    실제 구조: tb_user_agent_multi_policy (user_id, manager_menu_id, policy_id)
+              policy_id는 제품별 정책 테이블의 PK를 가리킴
+    """
     try:
         conn = get_connection()
         with conn.cursor() as cur:
+            # 사용자 정보 (실제 컬럼: email, member_id)
             cur.execute(
-                "SELECT user_id, user_name, user_email FROM tb_users WHERE user_id = %s",
+                "SELECT user_id, member_id, user_name, email FROM tb_users WHERE user_id = %s",
                 (user_id,)
             )
             user = cur.fetchone()
 
+            # 사용자에 할당된 정책 (tb_user_agent_multi_policy)
             cur.execute(
-                """SELECT u.unified_agent_policy_id,
-                          p.unified_agent_policy_name AS policy_name,
-                          p.create_datetime, p.update_datetime
-                   FROM tb_user_agent_policy u
-                   LEFT JOIN tb_unified_agent_policy p
-                       ON u.unified_agent_policy_id = p.unified_agent_policy_id
-                   WHERE u.user_id = %s""",
+                """SELECT m.manager_menu_id, m.policy_id, m.create_datetime
+                   FROM tb_user_agent_multi_policy m
+                   WHERE m.user_id = %s
+                   ORDER BY m.manager_menu_id""",
                 (user_id,)
             )
             rows = cur.fetchall()
@@ -337,7 +340,9 @@ def get_user_policies(user_id: int) -> dict:
 
 
 def get_group_policies(group_id: int) -> dict:
-    """부서에 할당된 통합 정책 조회 (tb_group_agent_policy JOIN)"""
+    """부서에 할당된 정책 조회
+    실제 구조: tb_group_agent_multi_policy (group_id, manager_menu_id, policy_id)
+    """
     try:
         conn = get_connection()
         with conn.cursor() as cur:
@@ -348,13 +353,10 @@ def get_group_policies(group_id: int) -> dict:
             group = cur.fetchone()
 
             cur.execute(
-                """SELECT g.unified_agent_policy_id,
-                          p.unified_agent_policy_name AS policy_name,
-                          p.create_datetime, p.update_datetime
-                   FROM tb_group_agent_policy g
-                   LEFT JOIN tb_unified_agent_policy p
-                       ON g.unified_agent_policy_id = p.unified_agent_policy_id
-                   WHERE g.group_id = %s""",
+                """SELECT m.manager_menu_id, m.policy_id, m.create_datetime
+                   FROM tb_group_agent_multi_policy m
+                   WHERE m.group_id = %s
+                   ORDER BY m.manager_menu_id""",
                 (group_id,)
             )
             rows = cur.fetchall()
