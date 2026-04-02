@@ -1490,6 +1490,7 @@ body {
     display: flex;
     gap: 20px;
     height: 100%;
+    min-height: 0;       /* override .main min-height */
     padding: 20px;
     overflow: hidden;
 }

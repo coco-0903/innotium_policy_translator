@@ -8,10 +8,19 @@ let lastResult = '';
 let chatHistory = [];   // [{role:'user'|'assistant', content:...}]
 
 // ── Sidebar / Section Switching ──
+const SECTION_ID_MAP = {
+    chat:      'sectionChat',
+    analyze:   'sectionAnalyze',
+    db:        'sectionDB',
+    log:       'sectionLog',
+    dashboard: 'sectionDashboard',
+};
+
 function switchSection(section, btn) {
     document.querySelectorAll('.app-section').forEach(el => el.style.display = 'none');
     document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
-    const target = document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1));
+    const sectionId = SECTION_ID_MAP[section];
+    const target = sectionId ? document.getElementById(sectionId) : null;
     if (target) target.style.display = 'flex';
     if (btn) btn.classList.add('active');
     if (section === 'dashboard') loadDashboard();
@@ -107,11 +116,30 @@ async function loadDashboard() {
         const res = await fetch('/api/dashboard');
         const data = await res.json();
         if (data.error) { el.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`; return; }
-        const stats = data.stats || {};
-        const rows = Object.entries(stats).map(([k, v]) => `
+
+        // API 응답 구조: {connected, users, groups, products: {제품명: 개수}}
+        const cards = [];
+
+        cards.push({ label: 'DB 연결', value: data.connected ? '✓ 정상' : '✗ 오류' });
+        cards.push({ label: '사용자 수', value: data.users ?? '-' });
+        cards.push({ label: '부서 수', value: data.groups ?? '-' });
+
+        const products = data.products || {};
+        const PROD_LABELS = {
+            innoecm: 'innoECM', securezone: 'SecureZone', securezone_acl: 'SZ 접근제어',
+            controlsuite: 'ControlSuite', ransomcruncher: 'RansomCruncher', ransomcruncher_rdp: 'RC RDP',
+            npouch: 'nPouch', npouch_origin: 'nPouch 원본', innomark: 'innoMark',
+            innomark_rdp: 'IM RDP', lizardbackup: 'LizardBackup', lizardbackup_agent: 'LB 에이전트',
+            unified: '통합 정책'
+        };
+        Object.entries(products).forEach(([k, v]) => {
+            cards.push({ label: PROD_LABELS[k] || k, value: v + '개' });
+        });
+
+        const rows = cards.map(c => `
             <div class="dash-stat">
-                <div class="dash-stat__label">${escapeHtml(k)}</div>
-                <div class="dash-stat__value">${v}</div>
+                <div class="dash-stat__label">${escapeHtml(c.label)}</div>
+                <div class="dash-stat__value">${escapeHtml(String(c.value))}</div>
             </div>`).join('');
         el.innerHTML = `<div class="dashboard-grid">${rows}</div>`;
     } catch (err) {
