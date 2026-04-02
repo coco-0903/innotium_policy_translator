@@ -676,8 +676,6 @@ function selectTab(el) {
     currentFeature = el.dataset.feature;
 
     const querySection   = document.getElementById('querySection');
-    const dbSection      = document.getElementById('dbSection');
-    const logSection     = document.getElementById('logSection');
     const diffSection    = document.getElementById('diffSection');
     const generateSection= document.getElementById('generateSection');
     const inputArea      = document.querySelector('.input-area');
@@ -685,8 +683,8 @@ function selectTab(el) {
     const analyzeBtn     = document.getElementById('analyzeBtn');
     const policyInput    = document.getElementById('policyInput');
 
-    // Reset all
-    [querySection, dbSection, logSection, diffSection, generateSection].forEach(el => {
+    // #dbSection / #logSection은 별도 사이드바 섹션 소속 — 건드리지 않음
+    [querySection, diffSection, generateSection].forEach(el => {
         if (el) el.style.display = 'none';
     });
     if (inputArea)  inputArea.style.display  = 'flex';
@@ -983,14 +981,16 @@ async function loadPolicyDetail(product, id, name, itemEl) {
             return;
         }
 
-        // Put JSON in the textarea and switch to translate tab
+        // textarea에 JSON 적재
         const formatted = JSON.stringify(data, null, 2);
         document.getElementById('policyInput').value = formatted;
         document.getElementById('charCount').textContent = formatted.length + '자';
 
-        // Switch to translate tab
+        // 분석도구 섹션으로 이동 후 번역 탭 활성화
+        const analyzeBtn = document.querySelector('[data-section="analyze"]');
+        switchSection('analyze', analyzeBtn);
         const translateTab = document.querySelector('[data-feature="translate"]');
-        selectTab(translateTab);
+        if (translateTab) selectTab(translateTab);
 
         showToast(`"${name}" 로드 완료 — 분석 버튼을 눌러주세요`);
     } catch (err) {
