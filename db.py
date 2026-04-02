@@ -555,7 +555,8 @@ def get_history(limit: int = 20) -> list:
         conn = get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, analysis_type, product, input_summary, created_at "
+                "SELECT id, analysis_type, product, input_summary, "
+                "DATE_FORMAT(created_at, '%%Y-%%m-%%d %%H:%%i:%%s') AS created_at "
                 "FROM pa_history ORDER BY created_at DESC LIMIT %s",
                 (min(int(limit), 50),)
             )

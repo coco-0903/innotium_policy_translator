@@ -159,15 +159,23 @@ function escapeHtml(str) {
 // '+09:00' 명시로 정확한 KST 파싱
 function parseKST(dtStr) {
     if (!dtStr) return null;
-    return new Date(String(dtStr).replace(' ', 'T') + '+09:00');
+    const s = String(dtStr).trim().replace(' ', 'T');
+    // 이미 timezone 정보 있으면 그대로, 없으면 +09:00 명시
+    const withTz = (s.includes('+') || s.endsWith('Z')) ? s : s + '+09:00';
+    const d = new Date(withTz);
+    return isNaN(d.getTime()) ? null : d;
 }
 function fmtDate(dtStr) {
     const d = parseKST(dtStr);
-    return d ? d.toLocaleDateString('ko-KR') : '';
+    if (d) return d.toLocaleDateString('ko-KR');
+    // fallback: 날짜 부분만 잘라서 표시
+    return dtStr ? String(dtStr).substring(0, 10) : '';
 }
 function fmtDatetime(dtStr) {
     const d = parseKST(dtStr);
-    return d ? d.toLocaleString('ko-KR') : '';
+    if (d) return d.toLocaleString('ko-KR');
+    // fallback: 원본 문자열 그대로
+    return dtStr ? String(dtStr).substring(0, 19).replace('T', ' ') : '';
 }
 
 
