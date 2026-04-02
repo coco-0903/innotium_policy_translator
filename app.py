@@ -997,6 +997,25 @@ CHAT_TOOLS = [
             "required": ["policy_json", "mode"]
         }
     },
+    {
+        "name": "search_knowledge",
+        "description": "이노 스마트 플랫폼 에이전트 기능 분析서에서 관련 내용 검색. 기능 설명, 사용 방법, UI 동작, 관리자/사용자 기능 등을 물어볼 때 사용.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "검색할 키워드 또는 질문 (예: '파일 격리 기능', '결재라인 설정 방법', 'USB 차단')"
+                },
+                "n_results": {
+                    "type": "integer",
+                    "description": "반환할 참고 자료 수 (기본 5, 최대 10)",
+                    "default": 5
+                }
+            },
+            "required": ["query"]
+        }
+    },
 ]
 
 
@@ -1070,6 +1089,22 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
             result = call_claude(prompt, user_msg)
             return json.dumps({"analysis": result, "mode": mode, "product": product_hint},
                               ensure_ascii=False)
+
+        elif tool_name == "search_knowledge":
+            try:
+                from rag import search
+                query = tool_input.get("query", "")
+                n = min(int(tool_input.get("n_results", 5)), 10)
+                hits = search(query, n_results=n)
+                if not hits:
+                    return json.dumps({
+                        "message": "관련 내용을 찾지 못했습니다. RAG 인덱스가 없거나 비어있습니다.",
+                        "hits": []
+                    }, ensure_ascii=False)
+                return json.dumps({"query": query, "count": len(hits), "hits": hits},
+                                  ensure_ascii=False)
+            except ImportError:
+                return json.dumps({"error": "RAG 모듈 미설치 (chromadb/sentence-transformers)"}, ensure_ascii=False)
 
         else:
             return json.dumps({"error": f"알 수 없는 도구: {tool_name}"}, ensure_ascii=False)
@@ -1727,6 +1762,66 @@ def api_logs_analyze():
         result = call_claude(system, user_msg)
         return jsonify({"success": True, "result": result, "file": os.path.basename(log_path)})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-3: RAG 엔드포인트 ───
+
+@app.route('/api/rag/status', methods=['GET'])
+def api_rag_status():
+    """RAG 인덱스 상태 확인"""
+    try:
+        from rag import get_status
+        return jsonify(get_status())
+    except ImportError:
+        return jsonify({"status": "unavailable", "message": "chromadb/sentence-transformers 미설치"}), 503
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/rag/build', methods=['POST'])
+def api_rag_build():
+    """PDF를 청킹하여 RAG 인덱스 빌드 (관리자용)"""
+    try:
+        from rag import build_index
+        data = request.json or {}
+        pdf_path = data.get('pdf_path') or None  # None이면 환경변수 기본값 사용
+        # 경로 주입 방지: 지정 경로가 있으면 docs/ 또는 /app/ 하위만 허용
+        if pdf_path:
+            real = os.path.realpath(pdf_path)
+            allowed_prefixes = [
+                os.path.realpath('./docs'),
+                os.path.realpath('/app/policy-analyzer/docs'),
+            ]
+            if not any(real.startswith(p) for p in allowed_prefixes):
+                return jsonify({"error": "허용되지 않은 PDF 경로입니다"}), 403
+        result = build_index(pdf_path)
+        return jsonify(result)
+    except ImportError:
+        return jsonify({"error": "chromadb/sentence-transformers 미설치"}), 503
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"RAG build 오류: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/rag/search', methods=['POST'])
+def api_rag_search():
+    """RAG 키워드 검색 (직접 테스트용)"""
+    try:
+        from rag import search
+        data = request.json or {}
+        query = (data.get('query') or '').strip()
+        if not query:
+            return jsonify({"error": "query가 필요합니다"}), 400
+        n = min(int(data.get('n_results', 5)), 10)
+        hits = search(query, n_results=n)
+        return jsonify({"query": query, "count": len(hits), "hits": hits})
+    except ImportError:
+        return jsonify({"error": "chromadb/sentence-transformers 미설치"}), 503
+    except Exception as e:
+        logger.error(f"RAG search 오류: {e}")
         return jsonify({"error": str(e)}), 500
 
 
