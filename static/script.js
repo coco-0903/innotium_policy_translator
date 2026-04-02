@@ -172,8 +172,12 @@ async function runBulkDiagnose() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({})
         });
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            showToast(`서버 오류 (${res.status}) — 잠시 후 다시 시도해주세요`);
+            return;
+        }
         const data = await res.json();
-
         if (data.error) {
             showToast('벌크 진단 오류: ' + data.error);
             return;
@@ -276,6 +280,7 @@ async function loadHistory() {
     el.innerHTML = '<div class="browser-empty">로딩 중...</div>';
     try {
         const res = await fetch('/api/history?limit=15');
+        if (!res.ok) { el.innerHTML = '<div class="browser-empty">이력 로드 실패</div>'; return; }
         const data = await res.json();
         const items = data.history || [];
         if (items.length === 0) {

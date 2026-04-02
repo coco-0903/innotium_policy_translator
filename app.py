@@ -1293,16 +1293,12 @@ def api_conflict():
 @limiter.limit("3 per minute")
 def api_bulk_diagnose():
     try:
-        data = request.json or {}
-        products = data.get('products') or list(PRODUCT_TABLE_MAP.keys())
-
-        # DB에서 각 제품 정책 수집 (각 제품 최대 5개)
+        # DB에서 전체 제품 정책 수집 (각 제품 최대 5개)
         all_policies = get_all_policies()
         collected = {}
-        for prod in products:
-            items = all_policies.get(prod, [])[:5]
+        for prod, items in all_policies.items():
             if items:
-                collected[prod] = items
+                collected[prod] = items[:5]
 
         if not collected:
             return jsonify({"error": "진단할 정책이 없습니다. DB에 정책을 먼저 등록해주세요."}), 404
