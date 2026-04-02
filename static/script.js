@@ -153,6 +153,23 @@ function escapeHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Utility: DB datetime → KST Date 객체
+// MariaDB DATETIME 문자열은 timezone 없이 KST로 저장됨
+// JS new Date('2026-04-02 16:04') 는 UTC로 해석 → +9h 오차 발생
+// '+09:00' 명시로 정확한 KST 파싱
+function parseKST(dtStr) {
+    if (!dtStr) return null;
+    return new Date(String(dtStr).replace(' ', 'T') + '+09:00');
+}
+function fmtDate(dtStr) {
+    const d = parseKST(dtStr);
+    return d ? d.toLocaleDateString('ko-KR') : '';
+}
+function fmtDatetime(dtStr) {
+    const d = parseKST(dtStr);
+    return d ? d.toLocaleString('ko-KR') : '';
+}
+
 
 // ═══════════════════════════════════════════
 //  Phase 3-4: 벌크 진단 리포트
@@ -298,7 +315,7 @@ async function loadHistory() {
         el.innerHTML = items.map(h => {
             const label = TYPE_LABELS[h.analysis_type] || h.analysis_type;
             const color = TYPE_COLORS[h.analysis_type] || 'var(--text-secondary)';
-            const date = h.created_at ? new Date(h.created_at).toLocaleString('ko-KR') : '';
+            const date = fmtDatetime(h.created_at);
             const summary = h.input_summary ? escapeHtml(h.input_summary).substring(0, 60) + (h.input_summary.length > 60 ? '…' : '') : '';
             return `
             <div class="history-item">
@@ -927,8 +944,8 @@ async function loadPolicies() {
             item.dataset.product = product;
 
             const dateStr = p.updateDatetime
-                ? new Date(p.updateDatetime).toLocaleDateString('ko-KR')
-                : (p.createDatetime ? new Date(p.createDatetime).toLocaleDateString('ko-KR') : '');
+                ? fmtDate(p.updateDatetime)
+                : fmtDate(p.createDatetime);
 
             item.innerHTML = `
                 <span class="policy-item__icon">
@@ -1460,7 +1477,7 @@ async function loadTimeline() {
             item.className = 'policy-item timeline-item';
 
             const updateDate = t.updateDatetime || t.createDatetime || '';
-            const dateStr = updateDate ? new Date(updateDate).toLocaleString('ko-KR') : '';
+            const dateStr = fmtDatetime(updateDate);
             const isUpdated = t.updateDatetime && t.updateDatetime !== t.createDatetime;
             const productLabel = PRODUCT_LABELS[t.product] || t.product;
 
