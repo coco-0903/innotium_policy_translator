@@ -155,6 +155,50 @@ function escapeHtml(str) {
 
 
 // ═══════════════════════════════════════════
+//  Phase 3-4: 벌크 진단 리포트
+// ═══════════════════════════════════════════
+
+async function runBulkDiagnose() {
+    const btn = document.getElementById('bulkDiagnoseBtn');
+    const resultArea = document.getElementById('bulkResultArea');
+    const resultContent = document.getElementById('bulkResultContent');
+
+    if (btn) { btn.disabled = true; btn.textContent = '진단 중...'; }
+    if (resultArea) resultArea.style.display = 'none';
+
+    try {
+        const res = await fetch('/api/bulk-diagnose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            showToast('벌크 진단 오류: ' + data.error);
+            return;
+        }
+        if (resultContent) {
+            resultContent.innerHTML = typeof marked !== 'undefined'
+                ? marked.parse(data.result)
+                : '<pre>' + escapeHtml(data.result) + '</pre>';
+        }
+        if (resultArea) resultArea.style.display = 'block';
+        if (data.stats) {
+            showToast(`${data.stats.products}개 제품, ${data.stats.policies}개 정책 진단 완료`);
+        }
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> 전체 진단`;
+        }
+    }
+}
+
+
+// ═══════════════════════════════════════════
 //  Phase 3-2: 에이전트 로그 업로드 분석
 // ═══════════════════════════════════════════
 
@@ -626,43 +670,53 @@ function selectTab(el) {
     el.classList.add('active');
     currentFeature = el.dataset.feature;
 
-    const querySection = document.getElementById('querySection');
-    const dbSection = document.getElementById('dbSection');
-    const logSection = document.getElementById('logSection');
-    const diffSection = document.getElementById('diffSection');
-    const inputArea = document.querySelector('.input-area');
-    const btnText = document.getElementById('btnText');
-    const analyzeBtn = document.getElementById('analyzeBtn');
+    const querySection   = document.getElementById('querySection');
+    const dbSection      = document.getElementById('dbSection');
+    const logSection     = document.getElementById('logSection');
+    const diffSection    = document.getElementById('diffSection');
+    const generateSection= document.getElementById('generateSection');
+    const inputArea      = document.querySelector('.input-area');
+    const btnText        = document.getElementById('btnText');
+    const analyzeBtn     = document.getElementById('analyzeBtn');
+    const policyInput    = document.getElementById('policyInput');
 
-    // Reset visibility
-    if (querySection) querySection.style.display = 'none';
-    if (dbSection) dbSection.style.display = 'none';
-    if (logSection) logSection.style.display = 'none';
-    if (diffSection) diffSection.style.display = 'none';
-    if (inputArea) inputArea.style.display = 'flex';
+    // Reset all
+    [querySection, dbSection, logSection, diffSection, generateSection].forEach(el => {
+        if (el) el.style.display = 'none';
+    });
+    if (inputArea)  inputArea.style.display  = 'flex';
     if (analyzeBtn) analyzeBtn.style.display = 'flex';
+    if (policyInput) {
+        policyInput.placeholder = '정책 JSON 또는 에이전트 로그를 붙여넣기 하세요...';
+    }
 
-    if (currentFeature === 'simulate') {
-        if (querySection) querySection.style.display = 'flex';
-        if (btnText) btnText.textContent = '시뮬레이션 실행';
-    } else if (currentFeature === 'translate') {
-        if (btnText) btnText.textContent = '정책 번역';
-    } else if (currentFeature === 'diagnose') {
-        if (btnText) btnText.textContent = '정책 진단';
-    } else if (currentFeature === 'diff') {
-        if (diffSection) diffSection.style.display = 'flex';
-        if (btnText) btnText.textContent = '비교 분석';
+    const TAB_CONFIG = {
+        translate: { btn: '정책 번역' },
+        simulate:  { btn: '시뮬레이션 실행', show: 'querySection' },
+        diagnose:  { btn: '정책 진단' },
+        diff:      { btn: '비교 분석',   show: 'diffSection' },
+        conflict:  { btn: '충돌 탐지' },
+        generate:  { btn: '정책 생성',   show: 'generateSection',
+                     placeholder: '원하는 정책 요구사항을 자연어로 설명하세요...\n예: "SecureZone 정책, USB 차단, 클립보드 제한, 인쇄는 허용"' },
+    };
+
+    const cfg = TAB_CONFIG[currentFeature];
+    if (cfg) {
+        if (btnText) btnText.textContent = cfg.btn;
+        if (cfg.show) {
+            const el = document.getElementById(cfg.show);
+            if (el) el.style.display = 'flex';
+        }
+        if (cfg.placeholder && policyInput) policyInput.placeholder = cfg.placeholder;
     } else if (currentFeature === 'db') {
-        if (inputArea) inputArea.style.display = 'none';
-        if (dbSection) dbSection.style.display = 'flex';
+        if (inputArea)  inputArea.style.display  = 'none';
+        if (dbSection)  dbSection.style.display  = 'flex';
         if (analyzeBtn) analyzeBtn.style.display = 'none';
     } else if (currentFeature === 'log') {
-        if (inputArea) inputArea.style.display = 'none';
+        if (inputArea)  inputArea.style.display  = 'none';
         if (logSection) logSection.style.display = 'flex';
         if (analyzeBtn) analyzeBtn.style.display = 'none';
-        if (document.getElementById('logList').querySelector('.browser-empty')) {
-            refreshLogList();
-        }
+        if (document.getElementById('logList').querySelector('.browser-empty')) refreshLogList();
     }
 }
 
@@ -747,9 +801,11 @@ async function analyze() {
 
     const featureLabels = {
         translate: '정책 → 자연어 번역 중...',
-        simulate: '시뮬레이션 분석 중...',
-        diagnose: '정책 건강도 진단 중...',
-        diff: '두 정책 비교 분석 중...'
+        simulate:  '시뮬레이션 분석 중...',
+        diagnose:  '정책 건강도 진단 중...',
+        diff:      '두 정책 비교 분석 중...',
+        conflict:  '충돌 및 취약점 탐지 중...',
+        generate:  'AI 정책 JSON 초안 생성 중...'
     };
     loadingFeature.textContent = featureLabels[currentFeature] || '분석 중...';
 
@@ -777,6 +833,9 @@ async function analyze() {
                 return;
             }
             body = { policy_a: policyText, policy_b: policyB };
+        } else if (currentFeature === 'generate') {
+            const product = document.getElementById('generateProduct')?.value || '';
+            body = { requirements: policyText, product };
         }
 
         const response = await fetch(endpoint, {
@@ -794,9 +853,11 @@ async function analyze() {
             const badgeText = document.getElementById('resultBadgeText');
             const badgeLabels = {
                 translate: '번역 완료',
-                simulate: '시뮬레이션 완료',
-                diagnose: '진단 완료',
-                diff: '비교 완료'
+                simulate:  '시뮬레이션 완료',
+                diagnose:  '진단 완료',
+                diff:      '비교 완료',
+                conflict:  '충돌 탐지 완료',
+                generate:  '정책 초안 생성 완료'
             };
             badgeText.textContent = badgeLabels[currentFeature] || '완료';
 

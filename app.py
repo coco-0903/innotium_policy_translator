@@ -1205,6 +1205,139 @@ def diagnose_policy():
         return jsonify({"error": str(e)}), 500
 
 
+# ─── Phase 3-4: 역방향 정책 생성 ───
+
+GENERATE_PROMPT = """당신은 이노티움 보안 플랫폼 정책 설계 전문가입니다.
+사용자의 자연어 요구사항을 받아 해당 제품의 정책 JSON 초안을 생성해주세요.
+
+규칙:
+1. 실제 이노티움 제품의 필드명과 자료형을 정확히 사용하세요
+2. 요구사항에 언급되지 않은 필드는 안전한 기본값(false, 0, null 등)으로 채우세요
+3. JSON 코드 블록과 함께, 주요 설정 항목에 대한 한국어 설명을 제공하세요
+4. 생성된 JSON은 실제 적용 전 반드시 검토가 필요함을 안내하세요
+5. 지원 제품: SecureZone, RansomCruncher, nPouch, innoECM, LizardBackup, innoMark"""
+
+CONFLICT_PROMPT = """당신은 이노티움 보안 정책 충돌 탐지 전문가입니다.
+입력된 정책 JSON에서 다음을 분석해주세요:
+
+1. **내부 충돌**: 같은 정책 내 서로 모순되는 설정 (예: 허용과 차단이 동시에 활성화)
+2. **논리적 불일치**: 상위 설정이 비활성화인데 하위 세부 설정이 활성화된 경우
+3. **보안 취약점**: 보안을 약화시키는 설정 조합
+4. **권고 수정사항**: 각 충돌/이슈별 구체적인 수정 방법
+
+마크다운 형식으로, 심각도(🔴 위험 / 🟡 주의 / 🟢 정보)를 표시해주세요."""
+
+BULK_DIAGNOSE_PROMPT = """당신은 이노티움 보안 플랫폼 전체 정책 감사 전문가입니다.
+아래 제공된 여러 정책들을 종합 분석하여 다음을 제공해주세요:
+
+1. **전체 보안 점수** (0~100점) 및 등급 (A~F)
+2. **제품별 요약**: 각 제품 정책의 보안 수준 요약
+3. **공통 취약점**: 여러 정책에서 반복되는 문제점
+4. **우선 조치 항목**: 즉시 수정이 필요한 Top 5 이슈
+5. **전체 권고사항**: 보안 강화를 위한 종합 제안
+
+마크다운 형식으로 경영진/기술팀 모두가 이해할 수 있게 작성하세요."""
+
+@app.route('/api/generate', methods=['POST'])
+@limiter.limit("10 per minute")
+def api_generate():
+    try:
+        data = request.json or {}
+        requirements = data.get('requirements', '').strip()
+        product = data.get('product', '').strip()
+        if not requirements:
+            return jsonify({"error": "정책 요구사항을 입력해주세요"}), 400
+
+        product_context = f"대상 제품: {product}\n" if product else ""
+        user_msg = f"{product_context}요구사항:\n{requirements}\n\n위 요구사항에 맞는 정책 JSON 초안을 생성해주세요."
+        result = call_claude(GENERATE_PROMPT, user_msg)
+        try:
+            save_history('generate', product, requirements[:200], result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "feature": "generate"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-4: 정책 충돌 탐지 ───
+
+@app.route('/api/conflict', methods=['POST'])
+@limiter.limit("20 per minute")
+def api_conflict():
+    try:
+        data = request.json or {}
+        policy_json = data.get('policy', '').strip()
+        if not policy_json:
+            return jsonify({"error": "정책 JSON을 입력해주세요"}), 400
+
+        parsed = parse_input(policy_json)
+        if parsed['policy_count'] == 0 and parsed['input_type'] == 'no_json_found':
+            return jsonify({"error": "정책 JSON을 찾을 수 없습니다"}), 400
+
+        product_hint = parsed['products_found'][0] if parsed['products_found'] else ''
+        user_msg = f"다음 정책에서 충돌 및 보안 이슈를 탐지해주세요:\n\n{parsed['clean_json']}"
+        result = call_claude(CONFLICT_PROMPT, user_msg)
+        try:
+            save_history('conflict', product_hint, parsed['clean_json'][:200], result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "feature": "conflict"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-4: 벌크 진단 리포트 ───
+
+@app.route('/api/bulk-diagnose', methods=['POST'])
+@limiter.limit("3 per minute")
+def api_bulk_diagnose():
+    try:
+        data = request.json or {}
+        products = data.get('products') or list(PRODUCT_TABLE_MAP.keys())
+
+        # DB에서 각 제품 정책 수집 (각 제품 최대 5개)
+        all_policies = get_all_policies()
+        collected = {}
+        for prod in products:
+            items = all_policies.get(prod, [])[:5]
+            if items:
+                collected[prod] = items
+
+        if not collected:
+            return jsonify({"error": "진단할 정책이 없습니다. DB에 정책을 먼저 등록해주세요."}), 404
+
+        # 정책 요약 텍스트 구성
+        summary_lines = []
+        total = 0
+        for prod, items in collected.items():
+            summary_lines.append(f"\n### {prod} ({len(items)}개 정책)")
+            for p in items:
+                summary_lines.append(f"- [{p['id']}] {p['name']}")
+                total += 1
+
+        policy_summary = "\n".join(summary_lines)
+        user_msg = (
+            f"총 {total}개 정책 ({len(collected)}개 제품) 벌크 진단 요청\n"
+            f"{policy_summary}\n\n"
+            "위 정책 현황을 기반으로 전체 보안 감사 리포트를 작성해주세요. "
+            "각 제품의 정책 수와 구성에 대한 분석을 포함하세요."
+        )
+        result = call_claude(BULK_DIAGNOSE_PROMPT, user_msg)
+        try:
+            save_history('bulk', '', f"{len(collected)}개 제품 {total}개 정책", result)
+        except Exception:
+            pass
+        return jsonify({
+            "success": True,
+            "result": result,
+            "feature": "bulk",
+            "stats": {"products": len(collected), "policies": total}
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ─── Phase 3-2: 정책 비교 Diff ───
 
 DIFF_PROMPT = """당신은 이노티움 보안 정책 비교 전문가입니다.

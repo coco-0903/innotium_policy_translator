@@ -225,6 +225,35 @@
                                 </svg>
                                 정책 비교
                             </button>
+                            <button class="tab" data-feature="conflict" onclick="selectTab(this)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                                충돌 탐지
+                            </button>
+                            <button class="tab" data-feature="generate" onclick="selectTab(this)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"/>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                                </svg>
+                                정책 생성
+                            </button>
+                        </div>
+
+                        <!-- 정책 생성 옵션 (generate 탭 전용) -->
+                        <div id="generateSection" style="display:none; flex-direction:column; gap:6px; margin-top:6px;">
+                            <label style="font-size:0.75rem; color:var(--text-secondary); padding:0 2px;">대상 제품 선택</label>
+                            <select id="generateProduct" class="product-select" style="width:100%;">
+                                <option value="">-- 제품 자동 감지 (미선택 시) --</option>
+                                <option value="SecureZone">SecureZone</option>
+                                <option value="RansomCruncher">RansomCruncher</option>
+                                <option value="nPouch">nPouch</option>
+                                <option value="innoECM">innoECM</option>
+                                <option value="LizardBackup">LizardBackup</option>
+                                <option value="innoMark">innoMark</option>
+                            </select>
                         </div>
 
                         <!-- Diff Second Input (정책 비교 모드) -->
@@ -500,15 +529,36 @@
                             <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
                         </svg>
                         <h2>INNOPLATFORM DB 현황</h2>
-                        <button class="btn-load" style="margin-left:auto;" onclick="loadDashboard()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-                            </svg>
-                            새로고침
-                        </button>
+                        <div style="margin-left:auto; display:flex; gap:8px;">
+                            <button class="btn-load" onclick="loadDashboard()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                                </svg>
+                                새로고침
+                            </button>
+                            <button class="btn-load" id="bulkDiagnoseBtn" style="background:var(--accent-glow); border-color:var(--accent); color:var(--accent);" onclick="runBulkDiagnose()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                                </svg>
+                                전체 진단
+                            </button>
+                        </div>
                     </div>
                     <div id="dashboardContent">
                         <div class="browser-empty">새로고침 버튼을 눌러주세요</div>
+                    </div>
+
+                    <!-- 벌크 진단 결과 -->
+                    <div id="bulkResultArea" style="display:none; padding:0 20px 8px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                            <span style="font-size:0.82rem; font-weight:600; color:var(--accent);">📊 전체 보안 진단 리포트</span>
+                            <button class="btn-icon" onclick="document.getElementById('bulkResultArea').style.display='none'" title="닫기">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="bulkResultContent" class="result-body markdown-body" style="max-height:400px; overflow-y:auto; font-size:0.82rem;"></div>
                     </div>
 
                     <!-- 최근 분석 이력 -->
