@@ -5,6 +5,124 @@
 // ── State ──
 let currentFeature = 'translate';
 let lastResult = '';
+let chatHistory = [];   // [{role:'user'|'assistant', content:...}]
+
+// ── Sidebar / Section Switching ──
+function switchSection(section, btn) {
+    document.querySelectorAll('.app-section').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+    const target = document.getElementById('section' + section.charAt(0).toUpperCase() + section.slice(1));
+    if (target) target.style.display = 'flex';
+    if (btn) btn.classList.add('active');
+    if (section === 'dashboard') loadDashboard();
+}
+
+// ── Chat: key handler ──
+function handleChatKey(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendChat();
+    }
+}
+
+// ── Chat: auto-resize textarea ──
+function autoResizeChatInput(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+// ── Chat: append a bubble to #chatMessages ──
+function appendChatBubble(role, html) {
+    const messagesEl = document.getElementById('chatMessages');
+    // Hide welcome message on first real message
+    const welcome = messagesEl.querySelector('.chat-welcome');
+    if (welcome) welcome.style.display = 'none';
+
+    const bubble = document.createElement('div');
+    bubble.className = `chat-bubble chat-bubble--${role}`;
+    bubble.innerHTML = html;
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return bubble;
+}
+
+// ── Chat: send message ──
+async function sendChat() {
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('chatSendBtn');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    // Hide quick actions after first message
+    const qa = document.getElementById('chatQuickActions');
+    if (qa) qa.style.display = 'none';
+
+    // Render user bubble
+    appendChatBubble('user', escapeHtml(msg).replace(/\n/g, '<br>'));
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show thinking indicator
+    const thinkingBubble = appendChatBubble('thinking', '<span class="chat-thinking-dots"><span>.</span><span>.</span><span>.</span></span> 생각 중...');
+    sendBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg, history: chatHistory })
+        });
+        const data = await res.json();
+        thinkingBubble.remove();
+
+        if (data.error) {
+            appendChatBubble('error', `<strong>오류:</strong> ${escapeHtml(data.error)}`);
+        } else {
+            appendChatBubble('assistant', marked.parse(data.result || ''));
+            // Update history (server returns truncated history)
+            if (data.history) chatHistory = data.history;
+        }
+    } catch (err) {
+        thinkingBubble.remove();
+        appendChatBubble('error', `<strong>연결 오류:</strong> ${escapeHtml(err.message)}`);
+    } finally {
+        sendBtn.disabled = false;
+        input.focus();
+    }
+}
+
+// ── Chat: quick action ──
+function sendQuickMessage(msg) {
+    const input = document.getElementById('chatInput');
+    input.value = msg;
+    sendChat();
+}
+
+// ── Dashboard ──
+async function loadDashboard() {
+    const el = document.getElementById('dashboardContent');
+    if (!el) return;
+    el.innerHTML = '<div class="browser-empty">로딩 중...</div>';
+    try {
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+        if (data.error) { el.innerHTML = `<div class="browser-empty">오류: ${data.error}</div>`; return; }
+        const stats = data.stats || {};
+        const rows = Object.entries(stats).map(([k, v]) => `
+            <div class="dash-stat">
+                <div class="dash-stat__label">${escapeHtml(k)}</div>
+                <div class="dash-stat__value">${v}</div>
+            </div>`).join('');
+        el.innerHTML = `<div class="dashboard-grid">${rows}</div>`;
+    } catch (err) {
+        el.innerHTML = `<div class="browser-empty">연결 오류: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+// ── Utility: HTML escape ──
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 // ── Sample Policy (6개 제품 통합 샘플) ──
 const SAMPLE_POLICY = {
@@ -919,18 +1037,72 @@ async function loadUserPolicies(userId, userName, itemEl) {
         const policies = data.policies || [];
         if (policies.length === 0) {
             showToast(`${userName}: 할당된 정책 없음`);
+            // 토스트로만 알리고 탭 전환 없이 유지 (빈 데이터 번역탭 오염 방지)
             return;
         }
 
-        // 통합 정책 목록을 JSON으로 구성해 번역 탭으로 전달
-        const formatted = JSON.stringify({ user: data.user, assigned_policies: policies }, null, 2);
+        // 정책 상세 데이터를 각 제품 테이블에서 조회해 번역 탭으로 전달
+        renderUserPolicyResult(data, userName);
+    } catch (err) {
+        showToast('연결 오류: ' + err.message);
+    }
+}
+
+function renderUserPolicyResult(data, userName) {
+    const policies = data.policies || [];
+
+    // 사용자에게 할당된 정책 목록 UI를 policyList 아래에 인라인 표시
+    const userList = document.getElementById('userList');
+    const existing = userList.querySelector('.user-policy-detail');
+    if (existing) existing.remove();
+
+    const detail = document.createElement('div');
+    detail.className = 'user-policy-detail';
+    detail.innerHTML = `
+        <div class="user-policy-header">
+            <span>${userName}에게 할당된 정책 (${policies.length}건)</span>
+        </div>
+        ${policies.map(p => `
+            <div class="user-policy-row" data-policy-id="${p.policyId}" data-menu-id="${p.managerMenuId}">
+                <span class="upol-product">${p.productLabel || '알 수 없음'}</span>
+                <span class="upol-name">${p.policyName || '정책#' + p.policyId}</span>
+                <button class="btn-upol-load" onclick="loadPolicyByMenuId(${p.managerMenuId}, ${p.policyId}, '${p.policyName || ''}')">번역</button>
+            </div>
+        `).join('')}
+    `;
+    userList.appendChild(detail);
+
+    showToast(`${userName} — ${policies.length}개 정책 조회 완료`);
+}
+
+async function loadPolicyByMenuId(menuId, policyId, policyName) {
+    // MENU_ID_MAP 기반으로 제품 key 매핑
+    const menuToProduct = {
+        100: 'innoecm', 200: 'securezone', 201: 'securezone_acl',
+        300: 'ransomcruncher', 301: 'ransomcruncher_rdp',
+        400: 'npouch', 401: 'npouch_origin',
+        500: 'lizardbackup', 600: 'innomark',
+    };
+    // innoECM은 PRODUCT_TABLE_MAP에 없으므로 별도 처리
+    const ECM_MENU = 100;
+    let product = menuToProduct[menuId];
+    if (!product) { showToast('해당 제품 상세 조회 미지원'); return; }
+
+    showToast(`${policyName} 상세 불러오는 중...`);
+    try {
+        const res = await fetch(`/api/policies/${product}/${policyId}`);
+        const detail = await res.json();
+        if (detail.error) {
+            // innoECM은 별도 엔드포인트 필요할 수 있음
+            showToast('정책 로드 실패: ' + detail.error);
+            return;
+        }
+        const formatted = JSON.stringify(detail, null, 2);
         document.getElementById('policyInput').value = formatted;
         document.getElementById('charCount').textContent = formatted.length + '자';
-
         const translateTab = document.querySelector('[data-feature="translate"]');
         selectTab(translateTab);
-
-        showToast(`${userName} — ${policies.length}개 정책 로드 완료`);
+        showToast(`"${policyName}" 로드 완료`);
     } catch (err) {
         showToast('연결 오류: ' + err.message);
     }
@@ -1004,14 +1176,27 @@ async function loadGroupPolicies(groupId, groupName, itemEl) {
             return;
         }
 
-        const formatted = JSON.stringify({ group: data.group, assigned_policies: policies }, null, 2);
-        document.getElementById('policyInput').value = formatted;
-        document.getElementById('charCount').textContent = formatted.length + '자';
+        const groupList = document.getElementById('groupList');
+        const existing = groupList.querySelector('.user-policy-detail');
+        if (existing) existing.remove();
 
-        const translateTab = document.querySelector('[data-feature="translate"]');
-        selectTab(translateTab);
+        const detail = document.createElement('div');
+        detail.className = 'user-policy-detail';
+        detail.innerHTML = `
+            <div class="user-policy-header">
+                <span>${groupName}에게 할당된 정책 (${policies.length}건)</span>
+            </div>
+            ${policies.map(p => `
+                <div class="user-policy-row">
+                    <span class="upol-product">${p.productLabel || '알 수 없음'}</span>
+                    <span class="upol-name">${p.policyName || '정책#' + p.policyId}</span>
+                    <button class="btn-upol-load" onclick="loadPolicyByMenuId(${p.managerMenuId}, ${p.policyId}, '${p.policyName || ''}')">번역</button>
+                </div>
+            `).join('')}
+        `;
+        groupList.appendChild(detail);
 
-        showToast(`${groupName} — ${policies.length}개 정책 로드 완료`);
+        showToast(`${groupName} — ${policies.length}개 정책 조회 완료`);
     } catch (err) {
         showToast('연결 오류: ' + err.message);
     }

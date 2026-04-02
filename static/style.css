@@ -863,6 +863,69 @@ body {
     color: #fff;
 }
 
+/* 사용자별 정책 상세 표시 */
+.user-policy-detail {
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+}
+
+.user-policy-header {
+    padding: 6px 12px;
+    background: var(--bg-input);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+}
+
+.user-policy-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+}
+
+.user-policy-row:last-child {
+    border-bottom: none;
+}
+
+.upol-product {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 80px;
+    white-space: nowrap;
+}
+
+.upol-name {
+    flex: 1;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-upol-load {
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-xs);
+    color: var(--accent);
+    font-size: 0.72rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+
+.btn-upol-load:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
 /* 통합 정책 조립 버튼 */
 .btn-assemble {
     margin-left: auto;
@@ -1083,4 +1146,447 @@ body {
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════
+   v4.0 — App Layout (Sidebar + Content)
+   ═══════════════════════════════════════════ */
+
+.app-layout {
+    display: flex;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: 160px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 8px;
+    gap: 4px;
+}
+
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    text-align: left;
+    width: 100%;
+}
+
+.sidebar-item:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.sidebar-item.active {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border: 1px solid rgba(255, 107, 0, 0.2);
+}
+
+.sidebar-footer {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 8px 0 4px;
+}
+
+/* ── Content Area ── */
+.content-area {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-section {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Chat Section ── */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 0 20px;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.chat-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.chat-welcome__icon {
+    width: 56px;
+    height: 56px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(255, 107, 0, 0.25);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+}
+
+.chat-welcome h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-welcome p {
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+/* Chat Bubbles */
+.chat-bubble {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 0.88rem;
+    line-height: 1.65;
+    word-break: break-word;
+}
+
+.chat-bubble--user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-bubble--assistant {
+    align-self: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    color: var(--text-primary);
+}
+
+.chat-bubble--assistant h1,
+.chat-bubble--assistant h2,
+.chat-bubble--assistant h3 {
+    font-size: 1rem;
+    margin: 12px 0 6px;
+    color: var(--accent);
+}
+
+.chat-bubble--assistant ul,
+.chat-bubble--assistant ol {
+    padding-left: 20px;
+    margin: 6px 0;
+}
+
+.chat-bubble--assistant li { margin: 3px 0; }
+
+.chat-bubble--assistant code {
+    background: var(--bg-input);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--cyan);
+}
+
+.chat-bubble--assistant pre {
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.chat-bubble--assistant pre code {
+    background: none;
+    padding: 0;
+}
+
+.chat-bubble--assistant table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.82rem;
+    margin: 8px 0;
+}
+
+.chat-bubble--assistant th,
+.chat-bubble--assistant td {
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: left;
+}
+
+.chat-bubble--assistant th {
+    background: var(--bg-input);
+    color: var(--accent);
+}
+
+.chat-bubble--thinking {
+    align-self: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.84rem;
+}
+
+.chat-bubble--error {
+    align-self: flex-start;
+    background: var(--red-glow);
+    border: 1px solid var(--red);
+    border-radius: var(--radius-sm);
+    color: var(--red);
+    font-size: 0.84rem;
+}
+
+/* Thinking animation */
+.chat-thinking-dots span {
+    animation: dotBlink 1.2s infinite;
+    opacity: 0;
+}
+.chat-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBlink {
+    0%, 80%, 100% { opacity: 0; }
+    40% { opacity: 1; }
+}
+
+/* Quick Actions */
+.chat-quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 0 12px;
+    justify-content: center;
+}
+
+.quick-btn {
+    padding: 7px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 0.80rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.quick-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+/* Chat Input */
+.chat-input-area {
+    padding: 12px 0 16px;
+    border-top: 1px solid var(--border);
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.chat-textarea {
+    flex: 1;
+    min-height: 44px;
+    max-height: 160px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.88rem;
+    padding: 11px 14px;
+    resize: none;
+    line-height: 1.5;
+    transition: border-color 0.15s;
+    scrollbar-width: thin;
+}
+
+.chat-textarea:focus {
+    outline: none;
+    border-color: var(--border-focus);
+}
+
+.btn-chat-send {
+    width: 44px;
+    height: 44px;
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.btn-chat-send:hover { background: var(--accent-hover); }
+.btn-chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.chat-input-hint {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: right;
+}
+
+/* ── Analyze Section layout ── */
+.analyze-layout {
+    display: flex;
+    gap: 20px;
+    height: 100%;
+    padding: 20px;
+    overflow: hidden;
+}
+
+/* ── Dashboard Section ── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.dash-stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dash-stat__label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.dash-stat__value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--font-mono);
+}
+
+/* ── Log / DB sections full-height scroll ── */
+#sectionDB,
+#sectionLog {
+    padding: 0;
+    overflow: hidden;
+}
+
+/* ── Standalone Panel (DB/Log/Dashboard wrapper) ── */
+.standalone-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.standalone-panel__header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.standalone-panel__header h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* DB browser inside standalone panel — make it scrollable */
+.standalone-panel .db-browser {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Log browser */
+.standalone-panel .log-browser {
+    flex-shrink: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Log result area */
+.log-result-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+/* Dashboard content scroll */
+#sectionDashboard .standalone-panel {
+    overflow-y: auto;
+}
+
+#dashboardContent {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
 }

@@ -27,7 +27,9 @@ DB_CONFIG = {
 }
 
 # 제품 → 테이블 매핑
+# innoecm 추가: tb_agent_policy (실제 DB 확인 완료)
 PRODUCT_TABLE_MAP = {
+    'innoecm':          ('tb_agent_policy',                        'agent_policy_id',              'agent_policy_name'),
     'securezone':       ('tb_secure_zone_agent_policy',        'sz_agent_policy_id',       'sz_agent_policy_name'),
     'securezone_acl':   ('tb_secure_zone_access_control_policy','sz_access_control_policy_id','sz_access_control_policy_name'),
     'controlsuite':     ('tb_control_suite',                   'csu_id',                   'csu_name'),
@@ -213,6 +215,37 @@ def get_policy_detail(product: str, policy_id: int) -> dict:
 # Phase 2-1: 통합 정책 조립
 # ═══════════════════════════════════════════════════
 
+# manager_menu_id → (제품명, 테이블, PK컬럼, 이름컬럼)
+# 실제 DB에서 확인된 값: 100 = innoECM (tb_agent_policy)
+# 나머지는 정책 할당 데이터가 생기면 확인 후 추가
+MENU_ID_MAP = {
+    100: ('innoECM',         'tb_agent_policy',                    'agent_policy_id',              'agent_policy_name'),
+    200: ('SecureZone',      'tb_secure_zone_agent_policy',        'sz_agent_policy_id',           'sz_agent_policy_name'),
+    201: ('SecureZone ACL',  'tb_secure_zone_access_control_policy','sz_access_control_policy_id', 'sz_access_control_policy_name'),
+    300: ('RansomCruncher',  'tb_ransom_cruncher_detect_policy',   'rc_detect_policy_id',          'rc_detect_policy_name'),
+    301: ('RC-RDP',          'tb_ransom_cruncher_rdp_policy',      'rc_rdp_policy_id',             'rc_rdp_policy_name'),
+    400: ('nPouch',          'tb_npouch_policy',                   'np_policy_id',                 'np_policy_name'),
+    401: ('nPouch 원본보호',  'tb_npouch_origin_protect_policy',   'np_origin_protect_policy_id',  'origin_protect_policy_name'),
+    500: ('LizardBackup',    'tb_lizard_backup_policy',            'lb_policy_id',                 'lb_policy_name'),
+    600: ('innoMark',        'tb_inno_mark_policy',                'im_policy_id',                 'im_policy_name'),
+}
+
+
+def _get_policy_name_by_menu(cur, manager_menu_id: int, policy_id: int) -> str:
+    """manager_menu_id + policy_id로 정책 이름 조회"""
+    if manager_menu_id not in MENU_ID_MAP:
+        return f'정책#{policy_id}'
+    product_label, table, pk_col, name_col = MENU_ID_MAP[manager_menu_id]
+    try:
+        cur.execute(f"SELECT `{name_col}` FROM `{table}` WHERE `{pk_col}` = %s", (policy_id,))
+        row = cur.fetchone()
+        if row:
+            return row.get(name_col, f'정책#{policy_id}')
+    except Exception:
+        pass
+    return f'정책#{policy_id}'
+
+
 def get_unified_policy_full(policy_id: int) -> dict:
     """통합 정책 상세 조회
     실제 DB 구조: tb_unified_agent_policy에는 제품별 FK 컬럼 없음.
@@ -307,41 +340,52 @@ def get_groups_list(limit: int = 200) -> list:
 
 
 def get_user_policies(user_id: int) -> dict:
-    """사용자에 할당된 정책 조회
-    실제 구조: tb_user_agent_multi_policy (user_id, manager_menu_id, policy_id)
-              policy_id는 제품별 정책 테이블의 PK를 가리킴
+    """사용자에 할당된 제품별 정책 조회
+    실제 테이블: tb_user_agent_policy (user_id, pc_connect_server_id, manager_menu_id, policy_id)
+    manager_menu_id로 어떤 제품 정책인지 판단 후 정책명 조회
     """
     try:
         conn = get_connection()
         with conn.cursor() as cur:
-            # 사용자 정보 (실제 컬럼: email, member_id)
             cur.execute(
                 "SELECT user_id, member_id, user_name, email FROM tb_users WHERE user_id = %s",
                 (user_id,)
             )
             user = cur.fetchone()
 
-            # 사용자에 할당된 정책 (tb_user_agent_multi_policy)
             cur.execute(
-                """SELECT m.manager_menu_id, m.policy_id, m.create_datetime
-                   FROM tb_user_agent_multi_policy m
-                   WHERE m.user_id = %s
-                   ORDER BY m.manager_menu_id""",
+                """SELECT manager_menu_id, policy_id, create_datetime
+                   FROM tb_user_agent_policy
+                   WHERE user_id = %s
+                   ORDER BY manager_menu_id""",
                 (user_id,)
             )
             rows = cur.fetchall()
+
+            # 각 행에 제품명 + 정책명 보강
+            enriched = []
+            for row in (rows or []):
+                menu_id = row.get('manager_menu_id')
+                pol_id  = row.get('policy_id')
+                product_label = MENU_ID_MAP.get(menu_id, (f'메뉴#{menu_id}',))[0]
+                policy_name   = _get_policy_name_by_menu(cur, menu_id, pol_id)
+                enriched.append({
+                    **_row_to_camel(row),
+                    'productLabel': product_label,
+                    'policyName':   policy_name,
+                })
         conn.close()
         return {
             'user': _row_to_camel(user) if user else {},
-            'policies': [_row_to_camel(r) for r in (rows or [])]
+            'policies': enriched,
         }
     except Exception as e:
         return {'error': str(e)}
 
 
 def get_group_policies(group_id: int) -> dict:
-    """부서에 할당된 정책 조회
-    실제 구조: tb_group_agent_multi_policy (group_id, manager_menu_id, policy_id)
+    """부서에 할당된 제품별 정책 조회
+    실제 테이블: tb_group_agent_policy (group_id, manager_menu_id, policy_id)
     """
     try:
         conn = get_connection()
@@ -353,17 +397,29 @@ def get_group_policies(group_id: int) -> dict:
             group = cur.fetchone()
 
             cur.execute(
-                """SELECT m.manager_menu_id, m.policy_id, m.create_datetime
-                   FROM tb_group_agent_multi_policy m
-                   WHERE m.group_id = %s
-                   ORDER BY m.manager_menu_id""",
+                """SELECT manager_menu_id, policy_id, create_datetime
+                   FROM tb_group_agent_policy
+                   WHERE group_id = %s
+                   ORDER BY manager_menu_id""",
                 (group_id,)
             )
             rows = cur.fetchall()
+
+            enriched = []
+            for row in (rows or []):
+                menu_id = row.get('manager_menu_id')
+                pol_id  = row.get('policy_id')
+                product_label = MENU_ID_MAP.get(menu_id, (f'메뉴#{menu_id}',))[0]
+                policy_name   = _get_policy_name_by_menu(cur, menu_id, pol_id)
+                enriched.append({
+                    **_row_to_camel(row),
+                    'productLabel': product_label,
+                    'policyName':   policy_name,
+                })
         conn.close()
         return {
             'group': _row_to_camel(group) if group else {},
-            'policies': [_row_to_camel(r) for r in (rows or [])]
+            'policies': enriched,
         }
     except Exception as e:
         return {'error': str(e)}

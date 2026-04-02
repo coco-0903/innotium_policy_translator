@@ -884,6 +884,202 @@ DIAGNOSE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제
 
 
 # ═══════════════════════════════════════════════════
+# Phase 3-1: 챗봇 Tool 정의 + /api/chat 엔드포인트
+# ═══════════════════════════════════════════════════
+
+CHAT_SYSTEM_PROMPT = f"""당신은 이노티움(Innotium) 보안 플랫폼 전문 어시스턴트입니다.
+신입 엔지니어부터 실무 담당자까지, 자연어로 질문하면 정책 분석·조회·진단을 도와줍니다.
+
+## 핵심 원칙
+- 모든 응답은 **한국어**로 작성
+- DB 조회가 필요한 경우 반드시 도구(tool)를 먼저 호출해 실제 데이터를 확인 후 답변
+- 추측이나 일반론으로 답하지 말고, 실제 DB 데이터에 근거해서 답변
+- 정책 분석 요청 시 analyze_policy 도구를 활용해 상세 분석 제공
+- READ ONLY — 정책 변경/삭제/생성은 절대 안 내
+- 도구 호출 결과가 비어 있으면 "현재 데이터 없음"으로 솔직하게 안내
+
+## 이노티움 제품 지식
+{POLICY_KNOWLEDGE}
+"""
+
+CHAT_TOOLS = [
+    {{
+        "name": "get_dashboard",
+        "description": "현재 DB의 제품별 정책 수, 사용자 수, 부서 수 등 현황 통계 조회",
+        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
+    }},
+    {{
+        "name": "query_policies",
+        "description": "특정 제품의 정책 목록 조회 (이름, ID, 날짜). 제품 목록: innoecm, securezone, securezone_acl, controlsuite, ransomcruncher, ransomcruncher_rdp, npouch, npouch_origin, innomark, innomark_rdp, lizardbackup, lizardbackup_agent, unified",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "product": {{
+                    "type": "string",
+                    "description": "제품 키 (예: securezone, innoecm, npouch 등)",
+                    "enum": ["innoecm","securezone","securezone_acl","controlsuite",
+                             "ransomcruncher","ransomcruncher_rdp","npouch","npouch_origin",
+                             "innomark","innomark_rdp","lizardbackup","lizardbackup_agent","unified"]
+                }}
+            }},
+            "required": ["product"]
+        }}
+    }},
+    {{
+        "name": "get_policy_detail",
+        "description": "특정 정책의 전체 필드 상세 조회",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "product": {{"type": "string", "description": "제품 키"}},
+                "policy_id": {{"type": "integer", "description": "정책 ID"}}
+            }},
+            "required": ["product", "policy_id"]
+        }}
+    }},
+    {{
+        "name": "get_users",
+        "description": "재직 중인 사용자 목록 조회 (member_status=1)",
+        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
+    }},
+    {{
+        "name": "get_user_policies",
+        "description": "특정 사용자에게 할당된 제품별 정책 조회",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "user_id": {{"type": "integer", "description": "사용자 ID (tb_users.user_id)"}}
+            }},
+            "required": ["user_id"]
+        }}
+    }},
+    {{
+        "name": "get_groups",
+        "description": "부서/그룹 목록 조회",
+        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
+    }},
+    {{
+        "name": "get_group_policies",
+        "description": "특정 부서에 할당된 정책 조회",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "group_id": {{"type": "integer", "description": "부서 ID (tb_groups.group_id)"}}
+            }},
+            "required": ["group_id"]
+        }}
+    }},
+    {{
+        "name": "get_timeline",
+        "description": "전체 정책 테이블의 최근 변경 이력 (최신순 정렬)",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "limit": {{"type": "integer", "description": "조회 건수 (기본 20, 최대 50)", "default": 20}}
+            }},
+            "required": []
+        }}
+    }},
+    {{
+        "name": "analyze_policy",
+        "description": "정책 JSON 데이터를 번역(translate)/시뮬레이션(simulate)/진단(diagnose) 분석",
+        "input_schema": {{
+            "type": "object",
+            "properties": {{
+                "policy_json": {{"type": "string", "description": "분석할 정책 JSON 문자열"}},
+                "mode": {{
+                    "type": "string",
+                    "enum": ["translate", "simulate", "diagnose"],
+                    "description": "translate=번역, simulate=시뮬레이션, diagnose=진단"
+                }},
+                "query": {{"type": "string", "description": "simulate 모드일 때 시나리오 질의 (예: USB 사용 가능한가?)"}}
+            }},
+            "required": ["policy_json", "mode"]
+        }}
+    }},
+]
+
+
+def _execute_tool(tool_name: str, tool_input: dict) -> str:
+    """tool_use 도구 실행 — 결과를 JSON 문자열로 반환"""
+    try:
+        if tool_name == "get_dashboard":
+            from db import get_dashboard
+            return json.dumps(get_dashboard(), ensure_ascii=False, default=str)
+
+        elif tool_name == "query_policies":
+            from db import get_all_policies
+            product = tool_input.get("product", "")
+            all_data = get_all_policies()
+            policies = all_data.get(product, [])
+            return json.dumps({{"product": product, "count": len(policies), "policies": policies}},
+                              ensure_ascii=False, default=str)
+
+        elif tool_name == "get_policy_detail":
+            from db import get_policy_detail
+            result = get_policy_detail(tool_input["product"], tool_input["policy_id"])
+            return json.dumps(result, ensure_ascii=False, default=str)
+
+        elif tool_name == "get_users":
+            from db import get_users_list
+            users = get_users_list()
+            return json.dumps({{"count": len(users), "users": users}},
+                              ensure_ascii=False, default=str)
+
+        elif tool_name == "get_user_policies":
+            from db import get_user_policies
+            result = get_user_policies(tool_input["user_id"])
+            return json.dumps(result, ensure_ascii=False, default=str)
+
+        elif tool_name == "get_groups":
+            from db import get_groups_list
+            groups = get_groups_list()
+            return json.dumps({{"count": len(groups), "groups": groups}},
+                              ensure_ascii=False, default=str)
+
+        elif tool_name == "get_group_policies":
+            from db import get_group_policies
+            result = get_group_policies(tool_input["group_id"])
+            return json.dumps(result, ensure_ascii=False, default=str)
+
+        elif tool_name == "get_timeline":
+            from db import get_policy_timeline
+            limit = min(int(tool_input.get("limit", 20)), 50)
+            items = get_policy_timeline(limit)
+            return json.dumps({{"count": len(items), "timeline": items}},
+                              ensure_ascii=False, default=str)
+
+        elif tool_name == "analyze_policy":
+            policy_json = tool_input.get("policy_json", "")
+            mode = tool_input.get("mode", "translate")
+            query = tool_input.get("query", "")
+            parsed = parse_input(policy_json)
+            if parsed["policy_count"] == 0:
+                return json.dumps({{"error": "정책 JSON을 파싱할 수 없습니다"}}, ensure_ascii=False)
+            product_hint = parsed["products_found"][0] if parsed["products_found"] else ""
+            few_shot = _build_few_shot(mode, product_hint)
+            if mode == "translate":
+                prompt = TRANSLATE_PROMPT
+                user_msg = f"{{few_shot}}다음 정책을 분석해주세요:\n\n{{parsed['clean_json']}}"
+            elif mode == "simulate":
+                prompt = SIMULATE_PROMPT
+                user_msg = f"{{few_shot}}시나리오: {{query or '일반 시뮬레이션'}}\n\n정책:\n{{parsed['clean_json']}}"
+            else:
+                prompt = DIAGNOSE_PROMPT
+                user_msg = f"{{few_shot}}다음 정책을 진단해주세요:\n\n{{parsed['clean_json']}}"
+            result = call_claude(prompt, user_msg)
+            return json.dumps({{"analysis": result, "mode": mode, "product": product_hint}},
+                              ensure_ascii=False)
+
+        else:
+            return json.dumps({{"error": f"알 수 없는 도구: {{tool_name}}"}}, ensure_ascii=False)
+
+    except Exception as e:
+        logger.error(f"Tool execution error — {{tool_name}}: {{e}}")
+        return json.dumps({{"error": str(e)}}, ensure_ascii=False)
+
+
+# ═══════════════════════════════════════════════════
 # 라우트
 # ═══════════════════════════════════════════════════
 
@@ -1028,6 +1224,97 @@ def api_policy_detail(product, policy_id):
             return jsonify(result), 404
         return jsonify(result)
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-1: 챗봇 엔드포인트 ───
+
+@app.route('/api/chat', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_chat():
+    """Claude tool_use 기반 챗봇 — 멀티턴 + DB 도구 호출"""
+    try:
+        data = request.json
+        user_message = (data.get('message') or '').strip()
+        history = data.get('history') or []
+
+        if not user_message:
+            return jsonify({"error": "message가 필요합니다"}), 400
+
+        # 히스토리 최대 20턴(40개 메시지)으로 truncate
+        if len(history) > 40:
+            history = history[-40:]
+
+        messages = history + [{"role": "user", "content": user_message}]
+
+        MAX_LOOPS = 5
+        tool_calls_made = []
+
+        for _ in range(MAX_LOOPS):
+            response = client.messages.create(
+                model=MODEL_NAME,
+                max_tokens=8192,
+                temperature=0.3,
+                system=CHAT_SYSTEM_PROMPT,
+                tools=CHAT_TOOLS,
+                messages=messages,
+            )
+
+            if response.stop_reason == "end_turn":
+                # 텍스트 응답 추출
+                text = ""
+                for block in response.content:
+                    if hasattr(block, "text"):
+                        text += block.text
+                # 최종 히스토리 구성 (직렬화 가능한 형태로)
+                messages.append({
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": text}]
+                })
+                logger.info(f"Chat 응답 완료 — 도구 호출: {tool_calls_made}")
+                return jsonify({
+                    "result": text,
+                    "history": messages,
+                    "tools_used": tool_calls_made,
+                })
+
+            if response.stop_reason == "tool_use":
+                # 어시스턴트 메시지 (tool_use 블록 포함) 추가
+                assistant_content = []
+                tool_result_content = []
+
+                for block in response.content:
+                    if block.type == "text":
+                        assistant_content.append({"type": "text", "text": block.text})
+                    elif block.type == "tool_use":
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        })
+                        # 도구 실행
+                        logger.info(f"Tool call: {block.name} input={block.input}")
+                        tool_calls_made.append(block.name)
+                        tool_result = _execute_tool(block.name, block.input)
+                        tool_result_content.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": tool_result,
+                        })
+
+                messages.append({"role": "assistant", "content": assistant_content})
+                messages.append({"role": "user", "content": tool_result_content})
+            else:
+                # 예상치 못한 stop_reason
+                break
+
+        # MAX_LOOPS 초과 시 마지막 텍스트 반환
+        final_text = "죄송합니다, 처리 중 문제가 발생했습니다. 다시 질문해 주세요."
+        return jsonify({"result": final_text, "history": messages, "tools_used": tool_calls_made})
+
+    except Exception as e:
+        logger.error(f"Chat API 오류: {e}")
         return jsonify({"error": str(e)}), 500
 
 
