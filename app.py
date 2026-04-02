@@ -903,100 +903,100 @@ CHAT_SYSTEM_PROMPT = f"""당신은 이노티움(Innotium) 보안 플랫폼 전�
 """
 
 CHAT_TOOLS = [
-    {{
+    {
         "name": "get_dashboard",
         "description": "현재 DB의 제품별 정책 수, 사용자 수, 부서 수 등 현황 통계 조회",
-        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
-    }},
-    {{
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
         "name": "query_policies",
         "description": "특정 제품의 정책 목록 조회 (이름, ID, 날짜). 제품 목록: innoecm, securezone, securezone_acl, controlsuite, ransomcruncher, ransomcruncher_rdp, npouch, npouch_origin, innomark, innomark_rdp, lizardbackup, lizardbackup_agent, unified",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "product": {{
+            "properties": {
+                "product": {
                     "type": "string",
                     "description": "제품 키 (예: securezone, innoecm, npouch 등)",
                     "enum": ["innoecm","securezone","securezone_acl","controlsuite",
                              "ransomcruncher","ransomcruncher_rdp","npouch","npouch_origin",
                              "innomark","innomark_rdp","lizardbackup","lizardbackup_agent","unified"]
-                }}
-            }},
+                }
+            },
             "required": ["product"]
-        }}
-    }},
-    {{
+        }
+    },
+    {
         "name": "get_policy_detail",
         "description": "특정 정책의 전체 필드 상세 조회",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "product": {{"type": "string", "description": "제품 키"}},
-                "policy_id": {{"type": "integer", "description": "정책 ID"}}
-            }},
+            "properties": {
+                "product": {"type": "string", "description": "제품 키"},
+                "policy_id": {"type": "integer", "description": "정책 ID"}
+            },
             "required": ["product", "policy_id"]
-        }}
-    }},
-    {{
+        }
+    },
+    {
         "name": "get_users",
         "description": "재직 중인 사용자 목록 조회 (member_status=1)",
-        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
-    }},
-    {{
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
         "name": "get_user_policies",
         "description": "특정 사용자에게 할당된 제품별 정책 조회",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "user_id": {{"type": "integer", "description": "사용자 ID (tb_users.user_id)"}}
-            }},
+            "properties": {
+                "user_id": {"type": "integer", "description": "사용자 ID (tb_users.user_id)"}
+            },
             "required": ["user_id"]
-        }}
-    }},
-    {{
+        }
+    },
+    {
         "name": "get_groups",
         "description": "부서/그룹 목록 조회",
-        "input_schema": {{"type": "object", "properties": {{}}, "required": []}}
-    }},
-    {{
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
         "name": "get_group_policies",
         "description": "특정 부서에 할당된 정책 조회",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "group_id": {{"type": "integer", "description": "부서 ID (tb_groups.group_id)"}}
-            }},
+            "properties": {
+                "group_id": {"type": "integer", "description": "부서 ID (tb_groups.group_id)"}
+            },
             "required": ["group_id"]
-        }}
-    }},
-    {{
+        }
+    },
+    {
         "name": "get_timeline",
         "description": "전체 정책 테이블의 최근 변경 이력 (최신순 정렬)",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "limit": {{"type": "integer", "description": "조회 건수 (기본 20, 최대 50)", "default": 20}}
-            }},
+            "properties": {
+                "limit": {"type": "integer", "description": "조회 건수 (기본 20, 최대 50)", "default": 20}
+            },
             "required": []
-        }}
-    }},
-    {{
+        }
+    },
+    {
         "name": "analyze_policy",
         "description": "정책 JSON 데이터를 번역(translate)/시뮬레이션(simulate)/진단(diagnose) 분석",
-        "input_schema": {{
+        "input_schema": {
             "type": "object",
-            "properties": {{
-                "policy_json": {{"type": "string", "description": "분석할 정책 JSON 문자열"}},
-                "mode": {{
+            "properties": {
+                "policy_json": {"type": "string", "description": "분석할 정책 JSON 문자열"},
+                "mode": {
                     "type": "string",
                     "enum": ["translate", "simulate", "diagnose"],
                     "description": "translate=번역, simulate=시뮬레이션, diagnose=진단"
-                }},
-                "query": {{"type": "string", "description": "simulate 모드일 때 시나리오 질의 (예: USB 사용 가능한가?)"}}
-            }},
+                },
+                "query": {"type": "string", "description": "simulate 모드일 때 시나리오 질의 (예: USB 사용 가능한가?)"}
+            },
             "required": ["policy_json", "mode"]
-        }}
-    }},
+        }
+    },
 ]
 
 
@@ -1012,7 +1012,7 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
             product = tool_input.get("product", "")
             all_data = get_all_policies()
             policies = all_data.get(product, [])
-            return json.dumps({{"product": product, "count": len(policies), "policies": policies}},
+            return json.dumps({"product": product, "count": len(policies), "policies": policies},
                               ensure_ascii=False, default=str)
 
         elif tool_name == "get_policy_detail":
@@ -1023,7 +1023,7 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
         elif tool_name == "get_users":
             from db import get_users_list
             users = get_users_list()
-            return json.dumps({{"count": len(users), "users": users}},
+            return json.dumps({"count": len(users), "users": users},
                               ensure_ascii=False, default=str)
 
         elif tool_name == "get_user_policies":
@@ -1034,7 +1034,7 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
         elif tool_name == "get_groups":
             from db import get_groups_list
             groups = get_groups_list()
-            return json.dumps({{"count": len(groups), "groups": groups}},
+            return json.dumps({"count": len(groups), "groups": groups},
                               ensure_ascii=False, default=str)
 
         elif tool_name == "get_group_policies":
@@ -1046,7 +1046,7 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
             from db import get_policy_timeline
             limit = min(int(tool_input.get("limit", 20)), 50)
             items = get_policy_timeline(limit)
-            return json.dumps({{"count": len(items), "timeline": items}},
+            return json.dumps({"count": len(items), "timeline": items},
                               ensure_ascii=False, default=str)
 
         elif tool_name == "analyze_policy":
@@ -1055,28 +1055,28 @@ def _execute_tool(tool_name: str, tool_input: dict) -> str:
             query = tool_input.get("query", "")
             parsed = parse_input(policy_json)
             if parsed["policy_count"] == 0:
-                return json.dumps({{"error": "정책 JSON을 파싱할 수 없습니다"}}, ensure_ascii=False)
+                return json.dumps({"error": "정책 JSON을 파싱할 수 없습니다"}, ensure_ascii=False)
             product_hint = parsed["products_found"][0] if parsed["products_found"] else ""
             few_shot = _build_few_shot(mode, product_hint)
             if mode == "translate":
                 prompt = TRANSLATE_PROMPT
-                user_msg = f"{{few_shot}}다음 정책을 분석해주세요:\n\n{{parsed['clean_json']}}"
+                user_msg = f"{few_shot}다음 정책을 분석해주세요:\n\n{parsed['clean_json']}"
             elif mode == "simulate":
                 prompt = SIMULATE_PROMPT
-                user_msg = f"{{few_shot}}시나리오: {{query or '일반 시뮬레이션'}}\n\n정책:\n{{parsed['clean_json']}}"
+                user_msg = f"{few_shot}시나리오: {query or '일반 시뮬레이션'}\n\n정책:\n{parsed['clean_json']}"
             else:
                 prompt = DIAGNOSE_PROMPT
-                user_msg = f"{{few_shot}}다음 정책을 진단해주세요:\n\n{{parsed['clean_json']}}"
+                user_msg = f"{few_shot}다음 정책을 진단해주세요:\n\n{parsed['clean_json']}"
             result = call_claude(prompt, user_msg)
-            return json.dumps({{"analysis": result, "mode": mode, "product": product_hint}},
+            return json.dumps({"analysis": result, "mode": mode, "product": product_hint},
                               ensure_ascii=False)
 
         else:
-            return json.dumps({{"error": f"알 수 없는 도구: {{tool_name}}"}}, ensure_ascii=False)
+            return json.dumps({"error": f"알 수 없는 도구: {tool_name}"}, ensure_ascii=False)
 
     except Exception as e:
-        logger.error(f"Tool execution error — {{tool_name}}: {{e}}")
-        return json.dumps({{"error": str(e)}}, ensure_ascii=False)
+        logger.error(f"Tool execution error — {tool_name}: {e}")
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
 # ═══════════════════════════════════════════════════
