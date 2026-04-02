@@ -217,6 +217,26 @@
                                 </svg>
                                 정책 진단
                             </button>
+                            <button class="tab" data-feature="diff" onclick="selectTab(this)">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="18" y1="20" x2="18" y2="10"/>
+                                    <line x1="12" y1="20" x2="12" y2="4"/>
+                                    <line x1="6" y1="20" x2="6" y2="14"/>
+                                </svg>
+                                정책 비교
+                            </button>
+                        </div>
+
+                        <!-- Diff Second Input (정책 비교 모드) -->
+                        <div id="diffSection" style="display:none; flex-direction:column; gap:6px; margin-top:6px;">
+                            <label style="font-size:0.75rem; color:var(--text-secondary); padding:0 2px;">비교 대상 정책 B</label>
+                            <textarea
+                                id="policyInputB"
+                                class="code-editor"
+                                style="height:120px; min-height:80px;"
+                                placeholder="비교할 두 번째 정책 JSON을 붙여넣기 하세요..."
+                                spellcheck="false"
+                            ></textarea>
                         </div>
 
                         <!-- Simulate Query Input -->
@@ -407,9 +427,40 @@
                         </svg>
                         <h2>로그 분석</h2>
                     </div>
-                    <div class="log-browser" id="logSection">
+                    <!-- 에이전트 로그 업로드 영역 -->
+                    <div class="log-upload-zone" id="logUploadZone"
+                         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                         ondragleave="this.classList.remove('drag-over')"
+                         ondrop="handleLogDrop(event)">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p>에이전트 로그 파일 드래그 &amp; 드롭</p>
+                        <p style="font-size:0.75rem; color:var(--text-muted);">.log .txt 파일 지원</p>
+                        <input type="file" id="logFileInput" accept=".log,.txt" style="display:none" onchange="handleLogFileSelect(this)">
+                        <button class="btn-load" style="margin-top:6px;" onclick="document.getElementById('logFileInput').click()">파일 선택</button>
+                    </div>
+
+                    <!-- 질의 입력 + 분석 버튼 -->
+                    <div class="log-query-row" id="logQueryRow" style="display:none;">
+                        <span class="log-filename" id="logFilename"></span>
+                        <input type="text" id="logQueryInput" class="query-input" style="flex:1;"
+                               placeholder="특정 오류를 찾으시면 입력하세요 (선택사항)">
+                        <button class="btn-analyze" style="padding:8px 18px; font-size:0.82rem;" onclick="analyzeUploadedLog()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            분석
+                        </button>
+                        <button class="btn-load" onclick="resetLogUpload()">초기화</button>
+                    </div>
+
+                    <!-- 서버 로그 (접기 가능) -->
+                    <div class="log-browser" id="logSection" style="flex-shrink:0; max-height:180px; border-top:1px solid var(--border);">
                         <div class="log-controls">
-                            <span style="font-size:0.78rem; color:var(--text-secondary); flex:1;">서버 로그 파일 선택</span>
+                            <span style="font-size:0.78rem; color:var(--text-secondary); flex:1;">서버 로그</span>
                             <button class="btn-load" onclick="refreshLogList()">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
@@ -421,6 +472,7 @@
                             <div class="browser-empty">새로고침 버튼을 눌러 로그 목록을 가져오세요</div>
                         </div>
                     </div>
+
                     <!-- 로그 분석 결과 -->
                     <div class="log-result-area">
                         <div class="empty-state" id="logEmptyState">
@@ -430,7 +482,7 @@
                                     <polyline points="14 2 14 8 20 8"/>
                                 </svg>
                             </div>
-                            <p class="empty-title">로그 파일을 선택하세요</p>
+                            <p class="empty-title">로그 파일을 업로드하거나 서버 로그를 선택하세요</p>
                         </div>
                         <div id="logResultContent" style="display:none;" class="result-body markdown-body"></div>
                     </div>
@@ -457,6 +509,17 @@
                     </div>
                     <div id="dashboardContent">
                         <div class="browser-empty">새로고침 버튼을 눌러주세요</div>
+                    </div>
+
+                    <!-- 최근 분석 이력 -->
+                    <div class="standalone-panel__header" style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <h2 style="font-size:0.88rem;">최근 분석 이력</h2>
+                    </div>
+                    <div id="historyContent" style="padding:0 20px 20px;">
+                        <div class="browser-empty">새로고침 시 이력을 불러옵니다</div>
                     </div>
                 </div>
             </section>

@@ -1088,6 +1088,7 @@ from db import (
     get_unified_policy_full,
     get_users_list, get_groups_list, get_user_policies, get_group_policies,
     get_policy_timeline,
+    save_history, get_history,
 )
 import db as _db_module
 
@@ -1129,9 +1130,14 @@ def translate_policy():
         few_shot = _build_few_shot('translate', product_hint)
 
         user_msg = f"{few_shot}{meta}\n아래 정책 데이터를 분석하여 자연어로 번역해주세요:\n\n{policy_text}"
+        result = call_claude(TRANSLATE_PROMPT, user_msg)
+        try:
+            save_history('translate', product_hint, policy_text[:200], result)
+        except Exception:
+            pass
         return jsonify({
             "success": True,
-            "result": call_claude(TRANSLATE_PROMPT, user_msg),
+            "result": result,
             "feature": "translate",
             "parser_info": {
                 "input_type": parsed['input_type'],
@@ -1161,7 +1167,12 @@ def simulate_policy():
         few_shot = _build_few_shot('simulate', product_hint)
 
         user_msg = f"{few_shot}정책 데이터:\n{policy_text}\n\n사용자 질의:\n{query}"
-        return jsonify({"success": True, "result": call_claude(SIMULATE_PROMPT, user_msg), "feature": "simulate"})
+        result = call_claude(SIMULATE_PROMPT, user_msg)
+        try:
+            save_history('simulate', product_hint, f"[{query}] {policy_text[:150]}", result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "feature": "simulate"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1184,7 +1195,112 @@ def diagnose_policy():
         few_shot = _build_few_shot('diagnose', product_hint)
 
         user_msg = f"{few_shot}아래 정책 데이터를 진단해주세요:\n\n{policy_text}"
-        return jsonify({"success": True, "result": call_claude(DIAGNOSE_PROMPT, user_msg), "feature": "diagnose"})
+        result = call_claude(DIAGNOSE_PROMPT, user_msg)
+        try:
+            save_history('diagnose', product_hint, policy_text[:200], result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "feature": "diagnose"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-2: 정책 비교 Diff ───
+
+DIFF_PROMPT = """당신은 이노티움 보안 정책 비교 전문가입니다.
+두 정책을 비교하여 변경된 항목, 추가된 항목, 삭제된 항목을 명확하게 설명해주세요.
+보안에 영향을 미치는 중요한 변경사항을 강조하고, 실무적 의미를 한국어로 설명해주세요."""
+
+@app.route('/api/diff', methods=['POST'])
+@limiter.limit("20 per minute")
+def api_diff():
+    try:
+        data = request.json
+        policy_a = data.get('policy_a', '').strip()
+        policy_b = data.get('policy_b', '').strip()
+        if not policy_a or not policy_b:
+            return jsonify({"error": "두 정책 JSON을 모두 입력해주세요"}), 400
+
+        parsed_a = parse_input(policy_a)
+        parsed_b = parse_input(policy_b)
+        product = (parsed_a['products_found'] or parsed_b['products_found'] or [''])[0]
+
+        user_msg = (
+            f"## 정책 A (기준)\n\n{parsed_a['clean_json']}\n\n"
+            f"## 정책 B (비교)\n\n{parsed_b['clean_json']}\n\n"
+            "위 두 정책의 차이점을 분석해주세요."
+        )
+        result = call_claude(DIFF_PROMPT, user_msg)
+        try:
+            save_history('diff', product, f"A:{policy_a[:100]} / B:{policy_b[:100]}", result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "feature": "diff"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-2: 에이전트 로그 업로드 분석 ───
+
+LOG_UPLOAD_PROMPT = """당신은 이노티움 보안 솔루션 에이전트 로그 분석 전문가입니다.
+업로드된 에이전트 로그 파일에서:
+1. 오류(ERROR) 및 경고(WARN) 항목 목록
+2. 주요 이상 패턴 (반복 오류, 예외, 실패 등)
+3. 원인 추정 및 조치 권고사항
+를 한국어로 명확하게 정리해주세요. 마크다운 형식으로 작성하세요."""
+
+@app.route('/api/upload-log', methods=['POST'])
+@limiter.limit("10 per minute")
+def api_upload_log():
+    try:
+        # multipart 파일 업로드 또는 JSON 텍스트
+        if request.files.get('file'):
+            f = request.files['file']
+            if not f.filename:
+                return jsonify({"error": "파일명이 없습니다"}), 400
+            content = f.read().decode('utf-8', errors='replace')
+            filename = f.filename
+        else:
+            data = request.json or {}
+            content = data.get('content', '')
+            filename = data.get('filename', 'log.txt')
+
+        if not content.strip():
+            return jsonify({"error": "로그 내용이 비어 있습니다"}), 400
+
+        # 50000자 초과 시 마지막 50000자만 (최신 로그 우선)
+        if len(content) > 50000:
+            content = f"[앞부분 생략 — 마지막 50000자]\n\n" + content[-50000:]
+
+        query = ''
+        if request.files.get('file'):
+            query = request.form.get('query', '')
+        else:
+            query = (request.json or {}).get('query', '')
+
+        if query:
+            user_msg = f"파일: {filename}\n질의: {query}\n\n로그 내용:\n{content}"
+        else:
+            user_msg = f"파일: {filename}\n\n로그 내용:\n{content}"
+
+        result = call_claude(LOG_UPLOAD_PROMPT, user_msg)
+        try:
+            save_history('log', '', filename, result)
+        except Exception:
+            pass
+        return jsonify({"success": True, "result": result, "filename": filename})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Phase 3-2: 분석 이력 조회 ───
+
+@app.route('/api/history', methods=['GET'])
+def api_history():
+    try:
+        limit = min(int(request.args.get('limit', 20)), 50)
+        rows = get_history(limit)
+        return jsonify({"history": rows})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

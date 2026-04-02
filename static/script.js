@@ -145,11 +145,123 @@ async function loadDashboard() {
     } catch (err) {
         el.innerHTML = `<div class="browser-empty">연결 오류: ${escapeHtml(err.message)}</div>`;
     }
+    loadHistory();
 }
 
 // ── Utility: HTML escape ──
 function escapeHtml(str) {
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ═══════════════════════════════════════════
+//  Phase 3-2: 에이전트 로그 업로드 분석
+// ═══════════════════════════════════════════
+
+let _uploadedLogFile = null;
+
+function handleLogDrop(event) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over');
+    const file = event.dataTransfer.files[0];
+    if (file) _prepareLogFile(file);
+}
+
+function handleLogFileSelect(input) {
+    if (input.files[0]) _prepareLogFile(input.files[0]);
+}
+
+function _prepareLogFile(file) {
+    _uploadedLogFile = file;
+    document.getElementById('logFilename').textContent = `📄 ${file.name}`;
+    document.getElementById('logQueryRow').style.display = 'flex';
+    document.getElementById('logUploadZone').style.opacity = '0.5';
+}
+
+function resetLogUpload() {
+    _uploadedLogFile = null;
+    document.getElementById('logQueryRow').style.display = 'none';
+    document.getElementById('logUploadZone').style.opacity = '1';
+    document.getElementById('logFileInput').value = '';
+    document.getElementById('logQueryInput').value = '';
+    document.getElementById('logEmptyState').style.display = 'flex';
+    document.getElementById('logResultContent').style.display = 'none';
+}
+
+async function analyzeUploadedLog() {
+    if (!_uploadedLogFile) { showToast('파일을 먼저 선택해주세요'); return; }
+
+    const query = document.getElementById('logQueryInput').value.trim();
+    const emptyState = document.getElementById('logEmptyState');
+    const resultEl = document.getElementById('logResultContent');
+
+    emptyState.innerHTML = '<p style="color:var(--text-muted);padding:20px;">AI 분석 중...</p>';
+    emptyState.style.display = 'flex';
+    resultEl.style.display = 'none';
+
+    try {
+        const formData = new FormData();
+        formData.append('file', _uploadedLogFile);
+        if (query) formData.append('query', query);
+
+        const res = await fetch('/api/upload-log', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        emptyState.style.display = 'none';
+        if (data.error) {
+            resultEl.innerHTML = `<div style="color:var(--red);padding:16px;"><strong>오류:</strong> ${escapeHtml(data.error)}</div>`;
+        } else {
+            resultEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.result) : '<pre>' + escapeHtml(data.result) + '</pre>';
+        }
+        resultEl.style.display = 'block';
+    } catch (err) {
+        emptyState.style.display = 'none';
+        resultEl.innerHTML = `<div style="color:var(--red);padding:16px;"><strong>연결 오류:</strong> ${escapeHtml(err.message)}</div>`;
+        resultEl.style.display = 'block';
+    }
+}
+
+
+// ═══════════════════════════════════════════
+//  Phase 3-2: 분석 이력
+// ═══════════════════════════════════════════
+
+async function loadHistory() {
+    const el = document.getElementById('historyContent');
+    if (!el) return;
+    el.innerHTML = '<div class="browser-empty">로딩 중...</div>';
+    try {
+        const res = await fetch('/api/history?limit=15');
+        const data = await res.json();
+        const items = data.history || [];
+        if (items.length === 0) {
+            el.innerHTML = '<div class="browser-empty">이력이 없습니다</div>';
+            return;
+        }
+        const TYPE_LABELS = {
+            translate: '번역', simulate: '시뮬', diagnose: '진단',
+            diff: '비교', log: '로그', chat: '챗봇'
+        };
+        const TYPE_COLORS = {
+            translate: 'var(--accent)', simulate: 'var(--cyan)', diagnose: 'var(--green)',
+            diff: '#a78bfa', log: '#60a5fa', chat: 'var(--orange)'
+        };
+        el.innerHTML = items.map(h => {
+            const label = TYPE_LABELS[h.analysis_type] || h.analysis_type;
+            const color = TYPE_COLORS[h.analysis_type] || 'var(--text-secondary)';
+            const date = h.created_at ? new Date(h.created_at).toLocaleString('ko-KR') : '';
+            const summary = h.input_summary ? escapeHtml(h.input_summary).substring(0, 60) + (h.input_summary.length > 60 ? '…' : '') : '';
+            return `
+            <div class="history-item">
+                <span class="history-type" style="color:${color};">${label}</span>
+                ${h.product ? `<span class="history-product">${escapeHtml(h.product)}</span>` : ''}
+                <span class="history-summary">${summary}</span>
+                <span class="history-date">${date}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        el.innerHTML = `<div class="browser-empty">연결 오류: ${escapeHtml(err.message)}</div>`;
+    }
 }
 
 // ── Sample Policy (6개 제품 통합 샘플) ──
@@ -517,33 +629,37 @@ function selectTab(el) {
     const querySection = document.getElementById('querySection');
     const dbSection = document.getElementById('dbSection');
     const logSection = document.getElementById('logSection');
+    const diffSection = document.getElementById('diffSection');
     const inputArea = document.querySelector('.input-area');
     const btnText = document.getElementById('btnText');
     const analyzeBtn = document.getElementById('analyzeBtn');
 
     // Reset visibility
-    querySection.style.display = 'none';
-    dbSection.style.display = 'none';
-    logSection.style.display = 'none';
-    inputArea.style.display = 'flex';
-    analyzeBtn.style.display = 'flex';
+    if (querySection) querySection.style.display = 'none';
+    if (dbSection) dbSection.style.display = 'none';
+    if (logSection) logSection.style.display = 'none';
+    if (diffSection) diffSection.style.display = 'none';
+    if (inputArea) inputArea.style.display = 'flex';
+    if (analyzeBtn) analyzeBtn.style.display = 'flex';
 
     if (currentFeature === 'simulate') {
-        querySection.style.display = 'flex';
-        btnText.textContent = '시뮬레이션 실행';
+        if (querySection) querySection.style.display = 'flex';
+        if (btnText) btnText.textContent = '시뮬레이션 실행';
     } else if (currentFeature === 'translate') {
-        btnText.textContent = '정책 번역';
+        if (btnText) btnText.textContent = '정책 번역';
     } else if (currentFeature === 'diagnose') {
-        btnText.textContent = '정책 진단';
+        if (btnText) btnText.textContent = '정책 진단';
+    } else if (currentFeature === 'diff') {
+        if (diffSection) diffSection.style.display = 'flex';
+        if (btnText) btnText.textContent = '비교 분석';
     } else if (currentFeature === 'db') {
-        inputArea.style.display = 'none';
-        dbSection.style.display = 'flex';
-        analyzeBtn.style.display = 'none';
+        if (inputArea) inputArea.style.display = 'none';
+        if (dbSection) dbSection.style.display = 'flex';
+        if (analyzeBtn) analyzeBtn.style.display = 'none';
     } else if (currentFeature === 'log') {
-        inputArea.style.display = 'none';
-        logSection.style.display = 'flex';
-        analyzeBtn.style.display = 'none';
-        // Auto-load log list on first visit
+        if (inputArea) inputArea.style.display = 'none';
+        if (logSection) logSection.style.display = 'flex';
+        if (analyzeBtn) analyzeBtn.style.display = 'none';
         if (document.getElementById('logList').querySelector('.browser-empty')) {
             refreshLogList();
         }
@@ -632,9 +748,10 @@ async function analyze() {
     const featureLabels = {
         translate: '정책 → 자연어 번역 중...',
         simulate: '시뮬레이션 분석 중...',
-        diagnose: '정책 건강도 진단 중...'
+        diagnose: '정책 건강도 진단 중...',
+        diff: '두 정책 비교 분석 중...'
     };
-    loadingFeature.textContent = featureLabels[currentFeature];
+    loadingFeature.textContent = featureLabels[currentFeature] || '분석 중...';
 
     try {
         let body = { policy: policyText };
@@ -650,6 +767,16 @@ async function analyze() {
                 return;
             }
             body.query = query;
+        } else if (currentFeature === 'diff') {
+            const policyB = document.getElementById('policyInputB')?.value.trim();
+            if (!policyB) {
+                showToast('비교할 정책 B를 입력해주세요');
+                btn.disabled = false;
+                loadingState.style.display = 'none';
+                emptyState.style.display = 'flex';
+                return;
+            }
+            body = { policy_a: policyText, policy_b: policyB };
         }
 
         const response = await fetch(endpoint, {
@@ -668,9 +795,10 @@ async function analyze() {
             const badgeLabels = {
                 translate: '번역 완료',
                 simulate: '시뮬레이션 완료',
-                diagnose: '진단 완료'
+                diagnose: '진단 완료',
+                diff: '비교 완료'
             };
-            badgeText.textContent = badgeLabels[currentFeature];
+            badgeText.textContent = badgeLabels[currentFeature] || '완료';
 
             // Render markdown
             const resultContent = document.getElementById('resultContent');

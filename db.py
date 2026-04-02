@@ -503,3 +503,64 @@ def get_feedback_examples(feature: str, product: str = '', limit: int = 3) -> li
         return rows or []
     except Exception:
         return []
+
+
+# ═══════════════════════════════════════════════════
+# 분석 이력 저장/조회
+# ═══════════════════════════════════════════════════
+
+def _ensure_history_table():
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS pa_history (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    analysis_type VARCHAR(20) NOT NULL,
+                    product VARCHAR(60) DEFAULT '',
+                    input_summary TEXT,
+                    result_text MEDIUMTEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_hist_created (created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def save_history(analysis_type: str, product: str, input_summary: str, result_text: str) -> bool:
+    """분석 이력 저장 (translate/simulate/diagnose/diff/log/chat)"""
+    _ensure_history_table()
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pa_history (analysis_type, product, input_summary, result_text) "
+                "VALUES (%s, %s, %s, %s)",
+                (analysis_type, product or '', (input_summary or '')[:300], (result_text or '')[:12000])
+            )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
+def get_history(limit: int = 20) -> list:
+    """최근 분석 이력 반환"""
+    _ensure_history_table()
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, analysis_type, product, input_summary, created_at "
+                "FROM pa_history ORDER BY created_at DESC LIMIT %s",
+                (min(int(limit), 50),)
+            )
+            rows = cur.fetchall()
+        conn.close()
+        return rows or []
+    except Exception:
+        return []
