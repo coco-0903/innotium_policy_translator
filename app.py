@@ -898,6 +898,14 @@ CHAT_SYSTEM_PROMPT = f"""당신은 이노티움(Innotium) 보안 플랫폼 전�
 - READ ONLY — 정책 변경/삭제/생성은 절대 안 내
 - 도구 호출 결과가 비어 있으면 "현재 데이터 없음"으로 솔직하게 안내
 
+## 기능분析서 검색 (search_knowledge 도구)
+다음 질문 유형에는 **반드시 search_knowledge 도구를 먼저 호출**하세요:
+- 특정 기능의 동작 방식, 사용 방법, UI 설명 (예: "USB 차단은 어떻게 설정해?", "결재라인이 뭐야?")
+- 제품별 기능 목록이나 지원 범위 (예: "리자드백업이 뭘 백업해?", "이노마크 기능은?")
+- 에이전트 동작 원리, 설치/설정 절차 관련 질문
+- POLICY_KNOWLEDGE에 없는 세부 기능 설명이 필요한 경우
+검색 결과가 없거나 거리값이 높으면(관련 없음) POLICY_KNOWLEDGE 기반으로 답변하세요.
+
 ## 이노티움 제품 지식
 {POLICY_KNOWLEDGE}
 """
@@ -1781,12 +1789,13 @@ def api_rag_status():
 
 @app.route('/api/rag/build', methods=['POST'])
 def api_rag_build():
-    """PDF를 청킹하여 RAG 인덱스 빌드 (관리자용)"""
+    """docs/manuals/ 디렉토리의 모든 PDF로 RAG 인덱스 빌드 (관리자용)"""
     try:
         from rag import build_index
         data = request.json or {}
-        pdf_path = data.get('pdf_path') or None  # None이면 환경변수 기본값 사용
-        # 경로 주입 방지: 지정 경로가 있으면 docs/ 또는 /app/ 하위만 허용
+        pdf_path = data.get('pdf_path') or None
+
+        # 경로 주입 방지: pdf_path 지정 시 docs/ 하위만 허용
         if pdf_path:
             real = os.path.realpath(pdf_path)
             allowed_prefixes = [
@@ -1795,7 +1804,11 @@ def api_rag_build():
             ]
             if not any(real.startswith(p) for p in allowed_prefixes):
                 return jsonify({"error": "허용되지 않은 PDF 경로입니다"}), 403
-        result = build_index(pdf_path)
+            result = build_index(pdf_path=pdf_path)
+        else:
+            # 기본: docs/manuals/ 디렉토리 전체 스캔
+            result = build_index()
+
         return jsonify(result)
     except ImportError:
         return jsonify({"error": "chromadb/sentence-transformers 미설치"}), 503
