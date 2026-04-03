@@ -11,9 +11,12 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import json
+import json as _json
 import logging
 import logging.handlers
+import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from parser import parse_input
 import anthropic
 
@@ -22,6 +25,41 @@ try:
     load_dotenv()
 except ImportError:
     pass
+
+CORRECTIONS_FILE = os.path.join(os.path.dirname(__file__), 'corrections.json')
+
+
+def load_corrections():
+    """저장된 오답 수정 내역 로드 (최근 10개)"""
+    if not os.path.exists(CORRECTIONS_FILE):
+        return []
+    try:
+        with open(CORRECTIONS_FILE, 'r', encoding='utf-8') as f:
+            data = _json.load(f)
+        return data[-10:] if len(data) > 10 else data
+    except Exception:
+        return []
+
+
+def save_correction(question, wrong_answer, correction, structured):
+    """오답 수정 내역 저장"""
+    corrections = []
+    if os.path.exists(CORRECTIONS_FILE):
+        try:
+            with open(CORRECTIONS_FILE, 'r', encoding='utf-8') as f:
+                corrections = _json.load(f)
+        except Exception:
+            corrections = []
+    corrections.append({
+        'id': str(int(time.time())),
+        'question': question,
+        'wrong_answer': wrong_answer[:500],
+        'structured': structured,
+        'timestamp': datetime.now(ZoneInfo('Asia/Seoul')).isoformat()
+    })
+    with open(CORRECTIONS_FILE, 'w', encoding='utf-8') as f:
+        _json.dump(corrections, f, ensure_ascii=False, indent=2)
+
 
 # ═══════════════════════════════════════════════════
 # 로깅 설정
@@ -1156,7 +1194,7 @@ DIAGNOSE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제
 # Phase 3-1: 챗봇 Tool 정의 + /api/chat 엔드포인트
 # ═══════════════════════════════════════════════════
 
-CHAT_SYSTEM_PROMPT = f"""당신은 이노티움(Innotium) 보안 플랫폼 전문 어시스턴트입니다.
+CHAT_SYSTEM_PROMPT_BASE = f"""당신은 이노티움(Innotium) 보안 플랫폼 전문 어시스턴트입니다.
 신입 엔지니어부터 실무 담당자까지, 자연어로 질문하면 정책 분석·조회·진단을 도와줍니다.
 
 ## 핵심 원칙
@@ -1182,10 +1220,27 @@ CHAT_SYSTEM_PROMPT = f"""당신은 이노티움(Innotium) 보안 플랫폼 전�
 - 에이전트 동작 원리, 설치/설정 절차 관련 질문
 - POLICY_KNOWLEDGE에 없는 세부 기능 설명이 필요한 경우
 검색 결과가 없거나 거리값이 높으면(관련 없음) POLICY_KNOWLEDGE 기반으로 답변하세요.
+- DB 조회 결과에서 특정 필드가 **빈 배열([])**이거나 **null**이면, 해당 기능이 없는 게 아니라 **현재 등록된 항목이 없는 것**. 기능 자체는 존재하므로 search_knowledge로 설정 방법을 안내하라.
+  - 예: controlSuiteProcessList=[] → "프로세스가 등록되지 않은 상태. 설정 방법: 관리자 콘솔 > 제어스위트 > 프로세스 탭 > 추가"
+- 기능의 '존재 여부'는 DB 필드가 아닌 POLICY_KNOWLEDGE와 search_knowledge 결과로 판단하라.
 
 ## 이노티움 제품 지식
 {POLICY_KNOWLEDGE}
 """
+
+
+def get_chat_system_prompt():
+    """오답 수정 내역을 포함한 시스템 프롬프트 동적 생성"""
+    base = CHAT_SYSTEM_PROMPT_BASE
+    corrections = load_corrections()
+    if not corrections:
+        return base
+    correction_text = "\n\n## 오답 수정 내역 (최근 학습사항)\n"
+    correction_text += "아래는 이전에 잘못 답변한 내용과 올바른 내용입니다. 반드시 이 내용을 우선 참고하세요:\n"
+    for i, c in enumerate(corrections, 1):
+        correction_text += f"\n{i}. Q: {c.get('question','')[:100]}\n   수정: {c.get('structured','')[:300]}\n"
+    return base + correction_text
+
 
 CHAT_TOOLS = [
     {
@@ -1528,14 +1583,25 @@ def diagnose_policy():
 # ─── Phase 3-4: 역방향 정책 생성 ───
 
 GENERATE_PROMPT = """당신은 이노티움 보안 플랫폼 정책 설계 전문가입니다.
-사용자의 자연어 요구사항을 받아 해당 제품의 정책 JSON 초안을 생성해주세요.
+사용자의 요구사항을 받아 **관리자 콘솔 UI 기준 설정 가이드**를 제공합니다.
+
+출력 형식:
+1. **설정 목표** — 요구사항을 한 줄로 요약
+2. **설정 경로 (단계별)** — 아래 형식으로 각 항목을 나열:
+   ```
+   [메뉴] > [탭/섹션] > [항목명]
+   → 설정값: ON / 블랙리스트 / "txt,exe" 등
+   → 효과: 이 설정이 적용되면 어떤 동작이 발생하는지
+   → 주의: 잘못 설정 시 발생할 수 있는 문제
+   ```
+3. **설정 후 확인 사항** — 적용 확인 방법
+4. **참고 JSON 필드** (접기 가능한 형태로, 부차적으로만 제공)
 
 규칙:
-1. 실제 이노티움 제품의 필드명과 자료형을 정확히 사용하세요
-2. 요구사항에 언급되지 않은 필드는 안전한 기본값(false, 0, null 등)으로 채우세요
-3. JSON 코드 블록과 함께, 주요 설정 항목에 대한 한국어 설명을 제공하세요
-4. 생성된 JSON은 실제 적용 전 반드시 검토가 필요함을 안내하세요
-5. 지원 제품: SecureZone, RansomCruncher, nPouch, innoECM, LizardBackup, innoMark"""
+- JSON을 먼저 보여주지 말 것 — UI 네비게이션 안내가 우선
+- 실무자가 콘솔에서 바로 따라할 수 있게 구체적인 경로 명시
+- 설정값 예시를 반드시 포함
+- 지원 제품: SecureZone, RansomCruncher, nPouch, innoECM, LizardBackup, innoMark"""
 
 CONFLICT_PROMPT = """당신은 이노티움 보안 정책 충돌 탐지 전문가입니다.
 입력된 정책 JSON에서 다음을 분석해주세요:
@@ -1802,6 +1868,7 @@ def api_chat():
         data = request.json
         user_message = (data.get('message') or '').strip()
         history = data.get('history') or []
+        image_data = data.get('image')  # {data: base64str, type: 'image/jpeg'}
 
         if not user_message:
             return jsonify({"error": "message가 필요합니다"}), 400
@@ -1810,7 +1877,19 @@ def api_chat():
         if len(history) > 20:
             history = history[-20:]
 
-        messages = history + [{"role": "user", "content": user_message}]
+        # 이미지 첨부 처리
+        if image_data and image_data.get('data') and image_data.get('type'):
+            user_content = [
+                {"type": "image", "source": {
+                    "type": "base64",
+                    "media_type": image_data['type'],
+                    "data": image_data['data']
+                }},
+                {"type": "text", "text": user_message}
+            ]
+        else:
+            user_content = user_message
+        messages = history + [{"role": "user", "content": user_content}]
 
         MAX_LOOPS = 5
         tool_calls_made = []
@@ -1820,7 +1899,7 @@ def api_chat():
                 model=CHAT_MODEL_NAME,
                 max_tokens=8192,
                 temperature=0.3,
-                system=CHAT_SYSTEM_PROMPT,
+                system=get_chat_system_prompt(),
                 tools=CHAT_TOOLS,
                 messages=messages,
             )
@@ -1880,6 +1959,35 @@ def api_chat():
 
     except Exception as e:
         logger.error(f"Chat API 오류: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chat/correction', methods=['POST'])
+@limiter.limit("20 per minute")
+def api_chat_correction():
+    """챗봇 오답 수정 저장"""
+    try:
+        data = request.json
+        question = data.get('question', '').strip()
+        wrong_answer = data.get('wrong_answer', '').strip()
+        correction = data.get('correction', '').strip()
+        if not correction:
+            return jsonify({"error": "수정 내용을 입력하세요"}), 400
+
+        # Claude로 자연어 수정을 구조화
+        structured_prompt = f"""아래 오답 수정 내용을 간결하고 명확한 한국어 사실 문장으로 정리해주세요.
+원래 질문: {question[:200]}
+잘못된 답변 요약: {wrong_answer[:300]}
+사용자 수정 내용: {correction}
+
+출력: 핵심 사실만 2~4문장으로 정리 (예: "제어스위트의 controlSuiteProcessList는 ...")"""
+
+        structured = call_claude("당신은 정보 정리 도우미입니다. 핵심만 간결하게 정리하세요.", structured_prompt)
+        save_correction(question, wrong_answer, correction, structured)
+        logger.info(f"오답 수정 저장 — 질문: {question[:50]}")
+        return jsonify({"success": True, "structured": structured})
+    except Exception as e:
+        logger.error(f"오답 수정 저장 오류: {e}")
         return jsonify({"error": str(e)}), 500
 
 

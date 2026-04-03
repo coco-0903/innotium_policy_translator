@@ -6,6 +6,9 @@
 let currentFeature = 'translate';
 let lastResult = '';
 let chatHistory = [];   // [{role:'user'|'assistant', content:...}]
+let attachedImage = null;   // {data: base64, type: 'image/jpeg'}
+let currentCorrectionTarget = '';  // 현재 수정 대상 답변 텍스트
+let lastUserQuestion = '';  // 마지막 사용자 질문
 
 // ── Sidebar / Section Switching ──
 const SECTION_ID_MAP = {
@@ -41,7 +44,7 @@ function autoResizeChatInput(el) {
 }
 
 // ── Chat: append a bubble to #chatMessages ──
-function appendChatBubble(role, html) {
+function appendChatBubble(role, html, rawText) {
     const messagesEl = document.getElementById('chatMessages');
     // Hide welcome message on first real message
     const welcome = messagesEl.querySelector('.chat-welcome');
@@ -50,6 +53,20 @@ function appendChatBubble(role, html) {
     const bubble = document.createElement('div');
     bubble.className = `chat-bubble chat-bubble--${role}`;
     bubble.innerHTML = html;
+
+    // 어시스턴트 답변에 수정 버튼 추가
+    if (role === 'assistant') {
+        const actions = document.createElement('div');
+        actions.className = 'chat-bubble-actions';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-correction';
+        editBtn.title = '오답 수정';
+        editBtn.textContent = '✏️ 수정';
+        editBtn.onclick = () => openCorrectionModal(rawText || bubble.innerText.slice(0, 500));
+        actions.appendChild(editBtn);
+        bubble.appendChild(actions);
+    }
+
     messagesEl.appendChild(bubble);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;
@@ -61,6 +78,7 @@ async function sendChat() {
     const sendBtn = document.getElementById('chatSendBtn');
     const msg = input.value.trim();
     if (!msg) return;
+    lastUserQuestion = msg;
 
     // Hide quick actions after first message
     const qa = document.getElementById('chatQuickActions');
@@ -68,6 +86,17 @@ async function sendChat() {
 
     // Render user bubble
     appendChatBubble('user', escapeHtml(msg).replace(/\n/g, '<br>'));
+    // Show attached image in user bubble if present
+    if (attachedImage) {
+        const lastBubble = document.querySelector('.chat-bubble--user:last-of-type');
+        if (lastBubble) {
+            const imgEl = document.createElement('img');
+            imgEl.src = `data:${attachedImage.type};base64,${attachedImage.data}`;
+            imgEl.className = 'chat-attached-img';
+            lastBubble.appendChild(imgEl);
+        }
+        removeAttachedImage();
+    }
     input.value = '';
     input.style.height = 'auto';
 
@@ -79,7 +108,7 @@ async function sendChat() {
         const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: msg, history: chatHistory })
+            body: JSON.stringify({ message: msg, history: chatHistory, image: attachedImage })
         });
         const data = await res.json();
         thinkingBubble.remove();
@@ -87,7 +116,7 @@ async function sendChat() {
         if (data.error) {
             appendChatBubble('error', `<strong>오류:</strong> ${escapeHtml(data.error)}`);
         } else {
-            appendChatBubble('assistant', marked.parse(data.result || ''));
+            appendChatBubble('assistant', marked.parse(data.result || ''), data.result || '');
             // Update history (server returns truncated history)
             if (data.history) chatHistory = data.history;
         }
@@ -105,6 +134,64 @@ function sendQuickMessage(msg) {
     const input = document.getElementById('chatInput');
     input.value = msg;
     sendChat();
+}
+
+// ── Chat: image attachment ──
+function handleImageSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('이미지는 5MB 이하만 첨부 가능합니다.'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const base64 = e.target.result.split(',')[1];
+        attachedImage = { data: base64, type: file.type };
+        document.getElementById('chatImageThumb').src = e.target.result;
+        document.getElementById('chatImagePreview').style.display = 'flex';
+    };
+    reader.readAsDataURL(file);
+}
+
+function removeAttachedImage() {
+    attachedImage = null;
+    document.getElementById('chatImagePreview').style.display = 'none';
+    document.getElementById('chatImageThumb').src = '';
+    document.getElementById('chatImageInput').value = '';
+}
+
+// ── Chat: correction modal ──
+function openCorrectionModal(answerText) {
+    currentCorrectionTarget = answerText;
+    document.getElementById('correctionInput').value = '';
+    document.getElementById('correctionModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('correctionInput').focus(), 100);
+}
+
+function closeCorrectionModal(event) {
+    if (event && event.target !== document.getElementById('correctionModal')) return;
+    document.getElementById('correctionModal').style.display = 'none';
+}
+
+async function submitCorrection() {
+    const correction = document.getElementById('correctionInput').value.trim();
+    if (!correction) return;
+    try {
+        const res = await fetch('/api/chat/correction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: lastUserQuestion,
+                wrong_answer: currentCorrectionTarget,
+                correction: correction
+            })
+        });
+        const data = await res.json();
+        document.getElementById('correctionModal').style.display = 'none';
+        if (data.success) {
+            appendChatBubble('assistant', '<em style="color:#7eb8d4">✓ 수정 내용이 저장되었습니다. 다음 질문부터 반영됩니다.</em>', '');
+        }
+    } catch (e) {
+        alert('저장 실패: ' + e.message);
+    }
 }
 
 // ── Dashboard ──

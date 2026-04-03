@@ -1692,3 +1692,162 @@ body {
     flex: 1;
     overflow-y: auto;
 }
+
+/* ── 이미지 첨부 ── */
+.chat-input-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.btn-chat-attach {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+    align-self: flex-end;
+    margin-bottom: 2px;
+}
+.btn-chat-attach:hover { color: var(--accent); border-color: var(--accent); }
+
+.chat-image-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+.chat-image-preview img {
+    height: 40px;
+    width: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+.btn-image-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px 4px;
+}
+.btn-image-remove:hover { color: var(--red); }
+
+.chat-attached-img {
+    display: block;
+    max-width: 200px;
+    max-height: 150px;
+    border-radius: 6px;
+    margin-top: 6px;
+    object-fit: cover;
+}
+
+/* ── 수정 버튼 ── */
+.chat-bubble-actions {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    gap: 6px;
+}
+.btn-correction {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    transition: all 0.2s;
+}
+.btn-correction:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── 모달 ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.modal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 480px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 6px;
+}
+.modal-close:hover { color: var(--text-primary); }
+.modal-body { padding: 16px 18px; }
+.modal-label { font-size: 0.84rem; color: var(--text-muted); margin-bottom: 8px; }
+.correction-textarea {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    padding: 10px 12px;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.correction-textarea:focus { outline: none; border-color: var(--accent); }
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+}
+.btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.84rem;
+    padding: 6px 14px;
+}
+.btn-secondary:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.btn-primary {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.84rem;
+    font-weight: 600;
+    padding: 6px 14px;
+}
+.btn-primary:hover { opacity: 0.85; }
