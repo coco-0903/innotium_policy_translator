@@ -78,9 +78,10 @@ except ImportError:
 # Claude API 설정
 # ═══════════════════════════════════════════════════
 API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
-MODEL_NAME = 'claude-sonnet-4-6'
+MODEL_NAME      = 'claude-sonnet-4-6'        # 번역/진단/분석용 (고품질)
+CHAT_MODEL_NAME = 'claude-haiku-4-5-20251001' # 챗봇용 (50K토큰/분, 저비용)
 
-client = anthropic.Anthropic(api_key=API_KEY, timeout=60.0)
+client = anthropic.Anthropic(api_key=API_KEY, timeout=120.0)
 
 logger.info(f"Policy Analyzer v3.0 시작 — 모델: {MODEL_NAME}")
 print(f"[✓] Claude 모델: {MODEL_NAME}")
@@ -1797,9 +1798,9 @@ def api_chat():
         if not user_message:
             return jsonify({"error": "message가 필요합니다"}), 400
 
-        # 히스토리 최대 20턴(40개 메시지)으로 truncate
-        if len(history) > 40:
-            history = history[-40:]
+        # 히스토리 최대 10턴(20개 메시지)으로 truncate — 토큰 절약
+        if len(history) > 20:
+            history = history[-20:]
 
         messages = history + [{"role": "user", "content": user_message}]
 
@@ -1808,7 +1809,7 @@ def api_chat():
 
         for _ in range(MAX_LOOPS):
             response = client.messages.create(
-                model=MODEL_NAME,
+                model=CHAT_MODEL_NAME,
                 max_tokens=8192,
                 temperature=0.3,
                 system=CHAT_SYSTEM_PROMPT,
