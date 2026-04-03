@@ -126,12 +126,13 @@ print(f"[✓] Claude 모델: {MODEL_NAME}")
 print("[✓] Policy Analyzer v3.0 — 6개 제품 통합 (매뉴얼 기반 KB)")
 
 
-def call_claude(system_prompt, user_message):
-    """Claude API 호출"""
+def call_claude(system_prompt, user_message, model=None):
+    """Claude API 호출. model 미지정 시 MODEL_NAME(Sonnet) 사용."""
+    use_model = model or MODEL_NAME
     try:
-        logger.info(f"Claude API 호출 — 입력 길이: {len(user_message)}")
+        logger.info(f"Claude API 호출 — 모델: {use_model}, 입력 길이: {len(user_message)}")
         response = client.messages.create(
-            model=MODEL_NAME,
+            model=use_model,
             max_tokens=8192,
             temperature=0.3,
             system=system_prompt,
@@ -141,8 +142,8 @@ def call_claude(system_prompt, user_message):
         logger.info(f"Claude API 완료 — 출력 길이: {len(result)}")
         return result
     except anthropic.APITimeoutError:
-        logger.error("Claude API 타임아웃 (60초 초과)")
-        return "AI 응답 시간 초과 (60초). 입력이 너무 크거나 서버 부하가 높습니다. 잠시 후 재시도해주세요."
+        logger.error(f"Claude API 타임아웃 — 모델: {use_model}")
+        return "AI 응답 시간 초과. 입력이 너무 크거나 서버 부하가 높습니다. 잠시 후 재시도해주세요."
     except Exception as e:
         logger.error(f"Claude API 오류: {e}")
         return f"AI 호출 오류: {str(e)}"
@@ -1798,7 +1799,7 @@ def api_upload_log():
         else:
             user_msg = f"파일: {filename}\n\n로그 내용:\n{content}"
 
-        result = call_claude(LOG_UPLOAD_PROMPT, user_msg)
+        result = call_claude(LOG_UPLOAD_PROMPT, user_msg, model=CHAT_MODEL_NAME)
         try:
             save_history('log', '', filename, result)
         except Exception:
