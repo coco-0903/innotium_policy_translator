@@ -1760,7 +1760,7 @@ def api_upload_zip_analyze():
             + "\n\n".join(parts)
         )
 
-        result = call_claude(ZIP_ANALYZE_PROMPT, user_msg)
+        result = call_claude(ZIP_ANALYZE_PROMPT, user_msg, model=CHAT_MODEL_NAME)
         try:
             save_history('bulk', '', f"ZIP: {f.filename} ({len(file_list)}개)", result)
         except Exception:
