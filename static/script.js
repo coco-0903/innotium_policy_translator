@@ -747,17 +747,19 @@ function readMultipleFiles(files) {
 
 // ── ZIP 종합 분석 ──
 async function runZipAnalyze(zipFile) {
-    const loadingEl = document.getElementById('loadingFeature');
-    const resultPanel = document.getElementById('resultPanel');
-    const resultContent = document.getElementById('resultContent');
-    const resultBadge = document.getElementById('resultBadgeText');
+    const loadingState   = document.getElementById('loadingState');
+    const loadingFeature = document.getElementById('loadingFeature');
+    const emptyState     = document.getElementById('emptyState');
+    const resultState    = document.getElementById('resultState');
+    const resultContent  = document.getElementById('resultContent');
+    const resultBadge    = document.getElementById('resultBadgeText');
 
     // 로딩 표시
-    if (loadingEl) {
-        loadingEl.style.display = 'flex';
-        loadingEl.textContent = `ZIP 분석 중 — ${zipFile.name} ...`;
-    }
-    if (resultPanel) resultPanel.style.display = 'none';
+    if (emptyState)     emptyState.style.display    = 'none';
+    if (resultState)    resultState.style.display    = 'none';
+    if (loadingState)   loadingState.style.display   = 'flex';
+    if (loadingFeature) loadingFeature.textContent   = `ZIP 종합 분석 중 — ${zipFile.name}`;
+
     showToast(`ZIP 파일 감지 — ${zipFile.name} 전체 정책 종합 분석 시작`);
 
     try {
@@ -766,15 +768,18 @@ async function runZipAnalyze(zipFile) {
 
         const res = await fetch('/api/upload-zip-analyze', { method: 'POST', body: formData });
         const ct = res.headers.get('content-type') || '';
+
+        if (loadingState) loadingState.style.display = 'none';
+
         if (!ct.includes('application/json')) {
+            if (emptyState) emptyState.style.display = 'flex';
             showToast(`서버 오류 (${res.status})`);
             return;
         }
         const data = await res.json();
 
-        if (loadingEl) loadingEl.style.display = 'none';
-
         if (data.error) {
+            if (emptyState) emptyState.style.display = 'flex';
             showToast('ZIP 분석 오류: ' + data.error);
             return;
         }
@@ -787,13 +792,14 @@ async function runZipAnalyze(zipFile) {
         }
         if (resultBadge) {
             const cnt = data.stats ? data.stats.files : '?';
-            resultBadge.textContent = `ZIP 종합 분석 완료 (${cnt}개 정책)`;
+            resultBadge.textContent = `ZIP 종합 분석 완료 (${cnt}개 파일)`;
         }
-        if (resultPanel) resultPanel.style.display = 'block';
+        if (resultState) resultState.style.display = 'block';
         lastResult = data.result || '';
 
     } catch (err) {
-        if (loadingEl) loadingEl.style.display = 'none';
+        if (loadingState) loadingState.style.display = 'none';
+        if (emptyState)   emptyState.style.display   = 'flex';
         showToast('연결 오류: ' + err.message);
     }
 }
