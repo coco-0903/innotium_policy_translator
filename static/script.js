@@ -720,6 +720,13 @@ document.addEventListener('DOMContentLoaded', () => {
 let loadedFileCount = 0;  // 누적 파일 수 추적
 
 function readMultipleFiles(files) {
+    // ZIP 파일이 포함된 경우 → ZIP 종합 분석 모드
+    const zipFile = Array.from(files).find(f => f.name.toLowerCase().endsWith('.zip'));
+    if (zipFile) {
+        runZipAnalyze(zipFile);
+        return;
+    }
+
     let completed = 0;
     const contents = [];
 
@@ -736,6 +743,59 @@ function readMultipleFiles(files) {
         };
         reader.readAsText(file);
     });
+}
+
+// ── ZIP 종합 분석 ──
+async function runZipAnalyze(zipFile) {
+    const loadingEl = document.getElementById('loadingFeature');
+    const resultPanel = document.getElementById('resultPanel');
+    const resultContent = document.getElementById('resultContent');
+    const resultBadge = document.getElementById('resultBadgeText');
+
+    // 로딩 표시
+    if (loadingEl) {
+        loadingEl.style.display = 'flex';
+        loadingEl.textContent = `ZIP 분석 중 — ${zipFile.name} ...`;
+    }
+    if (resultPanel) resultPanel.style.display = 'none';
+    showToast(`ZIP 파일 감지 — ${zipFile.name} 전체 정책 종합 분석 시작`);
+
+    try {
+        const formData = new FormData();
+        formData.append('file', zipFile);
+
+        const res = await fetch('/api/upload-zip-analyze', { method: 'POST', body: formData });
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            showToast(`서버 오류 (${res.status})`);
+            return;
+        }
+        const data = await res.json();
+
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        if (data.error) {
+            showToast('ZIP 분석 오류: ' + data.error);
+            return;
+        }
+
+        // 결과 표시
+        if (resultContent) {
+            resultContent.innerHTML = typeof marked !== 'undefined'
+                ? marked.parse(data.result)
+                : '<pre>' + escapeHtml(data.result) + '</pre>';
+        }
+        if (resultBadge) {
+            const cnt = data.stats ? data.stats.files : '?';
+            resultBadge.textContent = `ZIP 종합 분석 완료 (${cnt}개 정책)`;
+        }
+        if (resultPanel) resultPanel.style.display = 'block';
+        lastResult = data.result || '';
+
+    } catch (err) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        showToast('연결 오류: ' + err.message);
+    }
 }
 
 function appendPolicies(fileContents) {

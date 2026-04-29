@@ -1676,6 +1676,106 @@ def api_conflict():
 
 # ─── Phase 3-4: 벌크 진단 리포트 ───
 
+ZIP_ANALYZE_PROMPT = """당신은 이노티움 보안 플랫폼 전체 정책 감사 전문가입니다.
+아래는 ZIP에서 추출한 실제 정책 JSON 파일들입니다. 현재 실제로 적용된 정책들을 종합 분석하세요.
+
+분석 항목:
+1. **정책 구성 요약** — 어떤 제품의 정책이 몇 개 있는지, 전체 구조 파악
+2. **제품별 상세 분석** — 각 정책의 핵심 설정값과 보안 수준 (ON/OFF 여부, 임계값, 모드)
+3. **전체 보안 점수** (0~100점) 및 등급 (A~F) — 설정 완성도 기준
+4. **위험 설정 목록** — 🔴 즉시 수정 / 🟡 검토 필요 항목 나열
+5. **정책 간 연관성** — 제품 간 설정이 상호 영향을 주는 부분 (예: SecureZone ↔ nPouch 연동)
+6. **권고 조치** — 우선순위 순으로 Top 5 개선사항
+
+실제 JSON 값을 근거로 구체적인 필드명과 설정값을 언급하며 분석하세요."""
+
+
+@app.route('/api/upload-zip-analyze', methods=['POST'])
+@limiter.limit("5 per minute")
+def api_upload_zip_analyze():
+    """ZIP 파일에서 JSON 정책 파일 추출 → 전체 종합 분석"""
+    try:
+        f = request.files.get('file')
+        if not f or not f.filename:
+            return jsonify({"error": "ZIP 파일을 업로드해주세요"}), 400
+        if not f.filename.lower().endswith('.zip'):
+            return jsonify({"error": "ZIP 파일만 지원합니다"}), 400
+
+        import zipfile, io as _io
+        raw = f.read()
+        MAX_PER_FILE = 8000   # JSON 파일당 최대 글자
+        MAX_TOTAL    = 50000  # 전체 합산 최대 글자
+
+        parts = []
+        file_list = []
+        total_chars = 0
+
+        try:
+            with zipfile.ZipFile(_io.BytesIO(raw)) as zf:
+                members = sorted(
+                    [m for m in zf.infolist() if not m.is_dir()],
+                    key=lambda m: m.filename
+                )
+                for member in members:
+                    ext = os.path.splitext(member.filename)[1].lower()
+                    if ext not in ('.json', '.txt'):
+                        continue
+                    try:
+                        text = zf.read(member.filename).decode('utf-8', errors='replace').strip()
+                    except Exception:
+                        continue
+                    if not text:
+                        continue
+
+                    # 제품 자동 감지
+                    try:
+                        from parser import detect_product
+                        product = detect_product(text) or '알 수 없음'
+                    except Exception:
+                        product = '알 수 없음'
+
+                    if len(text) > MAX_PER_FILE:
+                        text = text[:MAX_PER_FILE] + "\n... (이하 생략)"
+
+                    short_name = os.path.basename(member.filename)
+                    parts.append(
+                        f"=== 파일: {short_name} | 감지 제품: {product} ===\n{text}"
+                    )
+                    file_list.append(f"{short_name} ({product})")
+                    total_chars += len(text)
+
+                    if total_chars >= MAX_TOTAL:
+                        parts.append("[전체 용량 한도 도달 — 이후 파일 생략]")
+                        break
+        except zipfile.BadZipFile:
+            return jsonify({"error": "ZIP 파일이 손상되었거나 올바르지 않습니다"}), 400
+
+        if not parts:
+            return jsonify({"error": "ZIP 안에 분석 가능한 JSON 정책 파일이 없습니다"}), 400
+
+        file_summary = ", ".join(file_list)
+        user_msg = (
+            f"업로드된 ZIP: {f.filename}\n"
+            f"추출된 정책 파일 {len(file_list)}개: {file_summary}\n\n"
+            + "\n\n".join(parts)
+        )
+
+        result = call_claude(ZIP_ANALYZE_PROMPT, user_msg)
+        try:
+            save_history('bulk', '', f"ZIP: {f.filename} ({len(file_list)}개)", result)
+        except Exception:
+            pass
+        return jsonify({
+            "success": True,
+            "result": result,
+            "feature": "zip_analyze",
+            "stats": {"files": len(file_list), "file_list": file_list}
+        })
+    except Exception as e:
+        logger.error(f"ZIP 분석 오류: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/bulk-diagnose', methods=['POST'])
 @limiter.limit("3 per minute")
 def api_bulk_diagnose():
