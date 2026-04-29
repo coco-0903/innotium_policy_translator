@@ -1765,6 +1765,49 @@ LOG_UPLOAD_PROMPT = """당신은 이노티움 보안 솔루션 에이전트 로�
 3. 원인 추정 및 조치 권고사항
 를 한국어로 명확하게 정리해주세요. 마크다운 형식으로 작성하세요."""
 
+def _extract_zip_logs(file_bytes):
+    """ZIP 파일에서 텍스트 로그 파일들을 추출하여 하나의 문자열로 합침.
+    지원 확장자: .log .txt .json .cst (및 확장자 없는 파일)
+    실행파일·이미지 등 바이너리는 건너뜀.
+    """
+    import zipfile, io
+    ALLOWED_EXT = {'.log', '.txt', '.json', '.cst', ''}
+    MAX_PER_FILE = 15000   # 파일당 최대 글자 수
+    MAX_TOTAL    = 50000   # 전체 합산 최대 글자 수
+
+    parts = []
+    total = 0
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
+            members = [m for m in zf.infolist() if not m.is_dir()]
+            # 파일명 기준 정렬 (날짜순 파일명이면 순서 유지)
+            members.sort(key=lambda m: m.filename)
+            for member in members:
+                ext = os.path.splitext(member.filename)[1].lower()
+                if ext not in ALLOWED_EXT:
+                    continue
+                try:
+                    raw = zf.read(member.filename)
+                    text = raw.decode('utf-8', errors='replace')
+                except Exception:
+                    continue
+                if not text.strip():
+                    continue
+                # 파일당 상한 — 끝부분 우선 (최신 로그)
+                if len(text) > MAX_PER_FILE:
+                    text = f"[앞부분 생략]\n" + text[-MAX_PER_FILE:]
+                parts.append(f"=== {member.filename} ===\n{text}")
+                total += len(text)
+                if total >= MAX_TOTAL:
+                    parts.append("[전체 용량 한도 도달 — 이후 파일 생략]")
+                    break
+    except zipfile.BadZipFile:
+        return None, "ZIP 파일이 손상되었거나 올바르지 않습니다"
+    if not parts:
+        return None, "ZIP 안에 분석 가능한 로그 파일(.log .json .txt .cst)이 없습니다"
+    return "\n\n".join(parts), None
+
+
 @app.route('/api/upload-log', methods=['POST'])
 @limiter.limit("10 per minute")
 def api_upload_log():
@@ -1774,38 +1817,44 @@ def api_upload_log():
             f = request.files['file']
             if not f.filename:
                 return jsonify({"error": "파일명이 없습니다"}), 400
-            content = f.read().decode('utf-8', errors='replace')
             filename = f.filename
+            raw_bytes = f.read()
+
+            # ZIP 파일 처리
+            if filename.lower().endswith('.zip'):
+                content, err = _extract_zip_logs(raw_bytes)
+                if err:
+                    return jsonify({"error": err}), 400
+                filename_label = filename + " (압축 해제)"
+            else:
+                content = raw_bytes.decode('utf-8', errors='replace')
+                filename_label = filename
+                # 단일 파일 50000자 상한
+                if len(content) > 50000:
+                    content = "[앞부분 생략 — 마지막 50000자]\n\n" + content[-50000:]
         else:
             data = request.json or {}
             content = data.get('content', '')
-            filename = data.get('filename', 'log.txt')
+            filename_label = data.get('filename', 'log.txt')
 
         if not content.strip():
             return jsonify({"error": "로그 내용이 비어 있습니다"}), 400
 
-        # 50000자 초과 시 마지막 50000자만 (최신 로그 우선)
-        if len(content) > 50000:
-            content = f"[앞부분 생략 — 마지막 50000자]\n\n" + content[-50000:]
-
-        query = ''
-        if request.files.get('file'):
-            query = request.form.get('query', '')
-        else:
-            query = (request.json or {}).get('query', '')
+        query = request.form.get('query', '') if request.files.get('file') else (request.json or {}).get('query', '')
 
         if query:
-            user_msg = f"파일: {filename}\n질의: {query}\n\n로그 내용:\n{content}"
+            user_msg = f"파일: {filename_label}\n질의: {query}\n\n로그 내용:\n{content}"
         else:
-            user_msg = f"파일: {filename}\n\n로그 내용:\n{content}"
+            user_msg = f"파일: {filename_label}\n\n로그 내용:\n{content}"
 
         result = call_claude(LOG_UPLOAD_PROMPT, user_msg, model=CHAT_MODEL_NAME)
         try:
-            save_history('log', '', filename, result)
+            save_history('log', '', filename_label, result)
         except Exception:
             pass
-        return jsonify({"success": True, "result": result, "filename": filename})
+        return jsonify({"success": True, "result": result, "filename": filename_label})
     except Exception as e:
+        logger.error(f"upload-log 오류: {e}")
         return jsonify({"error": str(e)}), 500
 
 
