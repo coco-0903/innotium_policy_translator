@@ -1160,71 +1160,91 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ### ① 시큐어존 (SecureZone) 에이전트 정책
+실제 파일: `json_seczAgentPolicy.json`
+최상위 구조: `{{ "id": "...", "policy": {{...}}, "time": "..." }}` — 실제 정책은 `policy` 키 안에 있음
 경로: `[설정] > App Setting > [Secure Zone] > 시큐어존 정책`
 
-**섹션 1: 기본 정보**
-- szAgentPolicyName → 정책명
-- szAgentPolicyType → 정책 유형 (DEFAULT=일반 / TAKEOUT_DEFAULT=반출 기본)
-- secureDriveTemplateId → 보안드라이브 템플릿 (0이면 ⚠️ 미연결)
-- controlSuiteId → 제어스위트 (0이면 ⚠️ 미연결)
+**섹션 1: 기본 정보** (`policy` 최상위 스칼라 필드)
+- `policy.szAgentPolicyName` → 정책명
+- `policy.szAgentPolicyType.name` → 정책 유형 (DEFAULT=일반정책 / TAKEOUT_DEFAULT=반출기본정책)
+- `policy.controlSuiteTemplateId` → 연결된 제어스위트 ID / `policy.controlSuiteTemplateName` → 제어스위트 이름
 
-**섹션 2: 드라이브 설정** (`[Secure Zone] > 드라이브`)
-- secureDriveLetter / secureDriveLabel → 보안드라이브 문자 / 레이블 (예: S:)
-- takeoutDriveLetter / takeoutDriveLabel → 반출드라이브 문자 / 레이블 (예: T:)
-- takeoutDriveQuota → 반출드라이브 용량 (0=무제한, MB 단위)
-- isTakeoutDriveBlock → 반출드라이브 차단 (true=⚠️ 반출 완전 불가)
-- isTakeoutDrivePathHide / isTakeoutDrivePathAccessDeny → 반출 경로 숨김 / 접근 차단
-- isRegistEcmDrive → ECM 드라이브 연동 등록 여부
+**섹션 2: 드라이브 설정** — `policy.secureDriveTemplate` 안에 중첩
+- `secureDriveTemplate.secureDriveLetter` / `secureDriveLabel` → 보안드라이브 문자(예: S:) / 레이블
+- `secureDriveTemplate.secureDrivePath` → 보안드라이브 가상디스크 파일 저장 경로
+- `secureDriveTemplate.takeoutDriveLetter` / `takeoutDriveLabel` → 반출드라이브 문자(예: W:) / 레이블
+- `secureDriveTemplate.takeoutDriveQuota` → 반출드라이브 용량 (MB 단위, 0=무제한 / 10024=약 10GB)
+- `secureDriveTemplate.isRegistEcmDrive` → ECM 드라이브 연동 등록 여부
+- `secureDriveTemplate.isTakeoutDrivePathHide` → 반출 경로 숨김 여부
+- `secureDriveTemplate.isTakeoutDrivePathAccessDeny` → 반출 경로 접근 차단 여부
+- `policy.isTakeoutDriveBlock` → 반출드라이브 차단 (true=⚠️ 결재 승인과 무관하게 반출 자체 불가)
 
 **섹션 3: 출력·프린트 제어** (`[Secure Zone] > 출력`)
-- isPrintUse → 출력 제어 기능 사용 여부
-- isPrint → 출력 허용 (0=차단 / 1=허용)
+- `policy.isPrintUse` → 출력 제어 기능 사용 여부 (false=출력 제어 완전 비활성화)
+- `policy.isPrint` → 출력 허용 여부 (isPrintUse=true일 때만 유효 / true=허용 / false=차단)
 
 **섹션 4: 프로세스 통제** (`[Secure Zone] > 프로세스`)
-- isAllowDenyProcessUse → 프로세스 허용/차단 기능 사용 여부
-- isAllowDenyProcess → 프로세스 통제 모드 (0=미사용 / 1=허용목록(화이트리스트) / 2=차단목록(블랙리스트))
-- isBlockExecuteProcess → 특정 프로세스 실행 차단 여부
-- isExceptProcess → 예외 프로세스 사용 여부
+- `policy.isAllowDenyProcessUse` → 프로세스 허용/차단 기능 사용 여부
+- `policy.isAllowDenyProcess` → 프로세스 통제 모드 (**int 값** / 0=미사용 / 1=차단목록(블랙리스트, DENY_PROCESS) / 2=허용목록(화이트리스트, ALLOW_PROCESS))
+  - `policy.allowDenyProcessTemplate.szTemplateType.name`으로 실제 모드 확인 가능
+  - 차단목록 등록 프로세스: `policy.allowDenyProcessTemplate.list[]` 의 `processName`, `sign`, `sha2`
+  - 태그 그룹: `policy.allowDenyProcessTemplate.tagList` (tagOrder 배열 순서대로 출력)
+- `policy.isBlockExecuteProcess` → 실행차단 프로세스 기능 사용 여부
+  - 차단 대상: `policy.blockExecuteProcessTemplate.list[]`
+- `policy.isExceptProcess` → 예외 프로세스 기능 사용 여부
+  - 예외 목록: `policy.exceptProcessTemplate.list[]`
+- `policy.isAllowProcessForceStop` → 허용목록 외 프로세스 강제 종료 여부
 
 **섹션 5: 파일 감시** (`[Secure Zone] > 파일감시`)
-- isWatchFile / isWatchFolder → 파일 감시기능 / 폴더 감시 (특정 파일이 보안드라이브 밖에 쓰이면 강제로 보안드라이브로 가져옵니다)
-- isWatchFileExtention / isWatchFileHeader → 확장자 감시 / 파일 헤더 감시 필터
+- `policy.isWatchFile` → 파일 감시 기능 (특정 파일이 보안드라이브 밖에 쓰이면 강제로 보안드라이브로 가져옵니다)
+- `policy.isWatchFolder` → 폴더 변경 감시 여부
+- `policy.isWatchFileExtention` → 확장자 필터 사용 여부 / `policy.watchFileExtention` → 감시 대상 확장자
+- `policy.isWatchFileHeader` → 파일 헤더 감시 여부
 
 **섹션 6: 에이전트 동작** (`[Secure Zone] > 에이전트`)
-- isOfflineUse → 오프라인 모드 허용 (네트워크 단절 시 보안드라이브 접근 허용 여부)
-- isLogin → 로그인 필요 여부
-- secureDriveBlockTime → 보안드라이브 차단 대기 시간 (분, 0=즉시 차단)
-- isShowAgentShutdownMenu → 에이전트 종료 메뉴 표시 (true=⚠️ 사용자가 에이전트 종료 가능)
-- isShowEmergencyCodeMenu → 비상코드 메뉴 표시
-- isManageFolder → 관리 폴더 사용 여부
-- isSyncFolder → 서버 폴더 동기화 사용 여부
+- `policy.isOfflineUse` → 오프라인 모드 허용 (네트워크 단절 시 보안드라이브 접근 허용 여부)
+- `policy.isLogin` → 에이전트 로그인 필요 여부
+- `policy.isLoginToActivePc` → 로그인 후 PC 활성화 연동 여부
+- `policy.secureDriveBlockTime` → 보안드라이브 차단 대기 시간 (분, 0=즉시 차단)
+- `policy.isShowAgentShutdownMenu` → 에이전트 종료 메뉴 표시 (true=⚠️ 사용자가 에이전트를 직접 종료 가능, 보안 약화)
+- `policy.isShowEmergencyCodeMenu` → 비상코드 메뉴 표시 여부
+- `policy.isManageFolder` → 관리 폴더 기능 사용 여부
+- `policy.isSyncFolder` → 서버 폴더 동기화 기능 사용 여부
+  - 동기화 목록: `policy.syncFolderTemplate.list[]` (sourcePath → destinationPath)
+
+**섹션 7: 제어스위트** — `policy.controlSuiteTemplate` 안에 중첩 (별도 H2 섹션으로 출력)
+- `controlSuiteTemplate.isClipboardRestrict` → 클립보드 공유제한 (활성화 시 보안드라이브↔일반 영역 간 복사/붙여넣기를 모든 프로세스에 일괄 차단합니다)
+- `controlSuiteTemplate.isNetwork` → 네트워크 제어 (활성화 시 허용된 IP 외 통신 차단)
+- `controlSuiteTemplate.isAllowExtension` → 확장자 제어 모드 (true=허용목록 / false=차단목록)
+- `controlSuiteTemplate.controlExtension` → 제어 대상 확장자 (`;` 구분자 / `.1`=전체 확장자 의미 / 보안드라이브 이외 영역에 저장 차단)
+- `controlSuiteTemplate.isHeaderCheck` → 파일 헤더 검사 (파일 위변조 탐지)
+- `controlSuiteTemplate.isSignExcept` → 디지털서명 예외 사용 여부
+- `controlSuiteTemplate.signExcept` → 예외 서명 목록 (`;` 구분자 — 해당 회사 서명 프로세스는 제어 제외)
+- `controlSuiteTemplate.controlSuiteProcessList` → 프로세스별 개별 제어 설정 목록
+  - 각 항목 주요 필드: `processName`, `isClipboardRestrict`, `isNetwork`, `isSandbox`, `controlSuiteProcessIpAddressList`
+  - 비어 있으면 "등록된 프로세스별 예외 없음 (전체 일괄 적용)"
+- `controlSuiteTemplate.controlSuiteWebRestrictList` → 웹 URL 제한 목록
+  - 각 항목: 허용 확장자(`allowFileExtention`) + 대상 브라우저 프로세스 목록(`controlSuiteWebRestrictProcessList`)
+  - 비어 있으면 "웹 URL 제한 없음"
 
 ### ① 시큐어존 접근제어 정책 (SecureZone ACL)
+실제 파일: `json_accCtlAgentPolicy.json`
+최상위 구조: `{{ "id": "...", "policy": {{...}}, "time": "..." }}` — 실제 정책은 `policy` 키 안에 있음
 경로: `[설정] > App Setting > [Secure Zone] > 접근제어 정책`
 
-- isAccessControl → 접근제어 활성화
-- isCmd → CMD(명령 프롬프트) 차단
-- isControlPanel → 제어판 차단
-- isRegedit → 레지스트리 편집기(regedit) 차단
-- isMmc → MMC 콘솔 차단
-- isHideExplorerRecent → 탐색기 최근 항목 숨김
-- pickHideDrive → 숨길 드라이브 (예: "D,E")
-- pickDenyDrive → 접근 차단 드라이브
-- pickExceptDrive → 예외 드라이브
-- usbControlAuth → 휴대용 디바이스 권한 (0=미사용 / 1=읽기전용(반입만 허용) / 2=완전차단)
-
-### ① 제어스위트 (ControlSuite)
-경로: `[설정] > App Setting > [Secure Zone] > 제어스위트`
-
-- isClipboardRestrict → 클립보드 공유제한 (활성화 시 보안드라이브↔일반 영역 간 복사/붙여넣기를 모든 프로세스에 일괄 차단합니다)
-- isNetwork → 네트워크 허용 (활성화 시 통신이 필요한 IP를 지정하여 허용합니다)
-- isAllowExtension → 확장자 허용 모드
-- controlExtension → 제어할 확장자 (전체 또는 지정 확장자로 보안드라이브 이외 영역에 저장을 차단합니다)
-- isHeaderCheck → 파일 헤더 검사 (파일 위변조 탐지)
-- isSignExcept / signExcept → 디지털서명 예외 여부 / 예외 서명 목록
-- controlSuiteProcessList → 프로세스 제어 목록 (등록된 항목 없으면 "등록된 프로세스 없음")
-- controlSuiteProcessTagList → 프로세스 태그 제어 목록
-- controlSuiteWebRestrictList → 웹 제한 목록
+- `policy.szAccessControlPolicyId` / `szAccessControlPolicyName` → 정책 ID / 정책명
+- `policy.isAccessControl` → 접근제어 활성화 (false=⚠️ 아래 모든 접근제어 무효)
+- `policy.isCmd` → CMD(명령 프롬프트) 차단
+- `policy.isControlPanel` → 제어판 차단
+- `policy.isRegedit` → 레지스트리 편집기(regedit) 차단
+- `policy.isMmc` → MMC 콘솔 차단
+- `policy.isHideExplorerRecent` → 탐색기 최근 항목 숨김
+- `policy.pickHideDrive` → 숨길 드라이브 (`"A-Z"` = 전체 숨김 / `"D,E"` = 특정 드라이브)
+- `policy.pickDenyDrive` → 접근 차단 드라이브 (`"A-Z"` = 전체 차단)
+- `policy.pickExceptDrive` → 예외 드라이브 (차단에서 제외 — 쉼표 구분, 예: `"S,W,C,D"`)
+  ※ pickDenyDrive와 pickExceptDrive를 함께 읽어야 실제 차단 드라이브 파악 가능
+- `policy.usbControlAuth` → 휴대용 디바이스 권한 (**int** / 0=미사용 / 1=읽기전용(반입만 허용) / 2=완전차단)
+- `policy.isShutdownAccessControl` → 접근제어 종료 허용 여부
 
 ### ② 랜섬크런처 (RansomCruncher) 탐지 정책
 경로: `[설정] > App Setting > [RansomCruncher] > 탐지 정책`
@@ -1398,15 +1418,15 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 - folderType → 폴더 유형 (공용/개인/프로젝트/임시)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-예시 출력 (시큐어존 에이전트 정책)
+예시 출력 (실제 json_seczAgentPolicy.json 기반)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ## 정책 개요
 
-> **[시큐어존] > 에이전트 정책** | 정책명: `영업팀 표준 정책`
-> 생성일: 2025-03-15 | 유형: 일반(DEFAULT) | 상태: 활성
+> **[시큐어존] > 에이전트 정책** | 정책명: `jpkoo_test_exe`
+> 생성일: 2026-04-28 | 유형: 일반(DEFAULT) | 마지막 수정: 2026-04-29
 
-보안드라이브(S:) 기반 영역 암호화와 USB 읽기전용 제어가 적용된 영업팀 표준 보안 정책입니다.
+보안드라이브(S:) 기반 차단 목록 프로세스 통제와 클립보드·확장자·네트워크 제어가 모두 활성화된 종합 보안 정책입니다.
 
 ---
 
@@ -1414,33 +1434,64 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 
 > **경로**: `[설정] > App Setting > [Secure Zone] > 시큐어존 정책 > 드라이브`
 
-- **보안드라이브**: **S: (SecureDrive)** — 보안드라이브가 S: 드라이브로 마운트되어 업무 파일을 암호화 영역에서 보호합니다.
-- **반출드라이브**: **T: (TakeOut)** — 승인된 반출 파일이 T: 드라이브에 복호화된 상태로 생성됩니다.
-- **반출드라이브 용량**: **2,048 MB** — 반출 가능한 총 용량이 2GB로 제한됩니다.
-- **반출드라이브 차단**: **비활성화** — 결재 승인 후 파일 반출이 가능합니다.
+- **보안드라이브**: **S: (보안드라이브)** — 업무 파일이 S: 드라이브 암호화 영역에서 보호되며, 가상디스크 파일은 `C:\vdisk`에 저장됩니다.
+- **반출드라이브**: **W: (반출드라이브)** — 결재 승인된 파일이 W: 드라이브에 복호화된 상태로 생성되며, 저장 경로는 `C:\vdisk2`입니다.
+- **반출드라이브 용량**: **10,024 MB (약 10GB)** — 반출 가능한 총 용량이 제한됩니다.
+- **반출드라이브 차단**: **비활성화** — 결재 승인 후 파일 반출이 가능한 상태입니다.
+- **ECM 드라이브 연동**: **비활성화** — innoECM 드라이브를 보안드라이브로 등록하지 않습니다.
 
-## [설정] > App Setting > [Secure Zone] > 접근제어 (제어스위트)
+---
 
-> **경로**: `[설정] > App Setting > [Secure Zone] > 제어스위트`
+## [설정] > App Setting > [Secure Zone] > 프로세스 통제
 
-- **클립보드 공유제한**: **활성화** — 클립보드를 통한 데이터 유출을 방지하며, 모든 프로세스에 일괄 적용됩니다.
-- **제어할 확장자**: **docx, xlsx, pptx, pdf** — 지정된 확장자의 파일을 보안드라이브 이외 영역에 저장하는 것을 차단합니다.
-- ⚠️ **네트워크 허용**: **비활성화** — 네트워크 제어가 꺼져 있어 보안드라이브 내 파일을 외부 서버로 전송하는 경로가 열려 있습니다.
+> **경로**: `[설정] > App Setting > [Secure Zone] > 시큐어존 정책 > 프로세스`
 
-## [설정] > App Setting > [Secure Zone] > 접근제어 정책
+- **프로세스 통제 기능**: **활성화** — 프로세스 허용/차단 기능이 켜져 있습니다.
+- **통제 모드**: **차단목록(블랙리스트)** — 등록된 프로세스만 보안드라이브 접근이 차단되며, 나머지는 허용됩니다.
+- **차단된 프로세스 그룹**:
+  - `오피스 프로세스 그룹`: excel.exe, winword.exe, powerpnt.exe, hwp.exe, acrobat.exe
+  - `FTP 프로세스 그룹`: filezilla.exe
+  - 개별 등록: 1122.exe (서명: 1122)
+- **실행 차단 기능**: **비활성화** — 특정 프로세스 실행 자체 차단은 미사용입니다.
+- ⚠️ **에이전트 종료 메뉴**: **활성화** — 사용자가 트레이에서 에이전트를 직접 종료할 수 있어 보안 공백이 발생할 수 있습니다.
 
-- **휴대용 디바이스 권한**: **읽기전용(1)** — USB 장치에서 파일 읽기는 허용되지만, PC에서 USB로의 파일 복사(반출)는 차단됩니다.
-- **CMD(명령 프롬프트) 차단**: **활성화** — 사용자가 명령 프롬프트를 실행할 수 없어 시스템 명령 실행 위협이 차단됩니다.
+---
+
+## [설정] > App Setting > [Secure Zone] > 제어스위트
+
+> **경로**: `[설정] > App Setting > [Secure Zone] > 제어스위트` | 연결된 제어스위트: `jpkoo_test_exe (ID: 166)`
+
+- **클립보드 공유제한**: **활성화** — 보안드라이브↔일반 영역 간 복사/붙여넣기가 모든 프로세스에 일괄 차단됩니다.
+- **네트워크 제어**: **활성화** — 허용된 IP 외의 통신이 차단됩니다.
+- **제어할 확장자**: **활성화 (허용목록 모드)** — txt, pptx, doc, docx, xlsx, pdf 등 지정 확장자의 파일을 보안드라이브 이외 영역에 저장하는 것을 차단합니다.
+- **파일 헤더 검사**: **비활성화** — 확장자 위변조 탐지가 꺼져 있습니다.
+- **디지털서명 예외**: **활성화** — Apple, Oracle, Mozilla, Zoom, Slack 등 신뢰 기업 서명 프로세스는 제어에서 제외됩니다.
+- **프로세스별 개별 제어**: code.exe, daoumessenger 4.0.exe, kakaotalk.exe — 3개 프로세스에 개별 네트워크/클립보드 정책 적용됨.
+- **웹 URL 제한**: 2개 규칙 등록 — chrome.exe, msedge.exe 등 브라우저에서 특정 URL 접근 시 txt/pdf/hwp 파일만 허용.
+
+---
+
+## [설정] > App Setting > [Secure Zone] > 파일 감시 / 에이전트 동작
+
+- **파일 감시**: **비활성화** — 보안드라이브 외부 파일 쓰기 감시가 꺼져 있습니다.
+- **오프라인 모드**: **비활성화** — 네트워크 단절 시 보안드라이브에 접근할 수 없습니다.
+- **출력 제어**: **비활성화** — 보안드라이브 내 파일 인쇄 제한이 꺼져 있습니다.
+- **폴더 동기화**: **비활성화** — 서버 폴더 자동 동기화 미사용입니다.
+
+---
 
 ## 보안 수준 요약
 
 | 항목 | 상태 |
 |------|------|
 | 전체 보안 수준 | 중 |
-| 주요 활성 보호 | 클립보드 제한, USB 읽기전용, CMD 차단, 확장자 제어 |
-| 비활성화된 주요 기능 | ⚠️ 네트워크 제어 꺼짐 |
+| 주요 활성 보호 | 클립보드 제한, 네트워크 제어, 확장자 제어, 프로세스 차단목록, 서명 예외 |
+| 주의 필요 항목 | ⚠️ 에이전트 종료 메뉴 활성화, 파일 헤더 검사 비활성화, 출력 제어 미사용 |
 
-권고사항: 네트워크 제어(제어스위트 > isNetwork)를 활성화하고 허용 IP 목록을 설정하면 보안드라이브 데이터의 외부 전송 경로를 추가로 차단할 수 있습니다.
+권고사항:
+1. `isShowAgentShutdownMenu`를 false로 설정하여 사용자의 에이전트 임의 종료를 차단하세요.
+2. `isHeaderCheck`를 활성화하면 확장자 위변조(예: .exe → .docx 이름 변경) 파일을 차단할 수 있습니다.
+3. 출력 제어(`isPrintUse`)가 꺼져 있어 보안드라이브 내 문서를 제한 없이 인쇄할 수 있습니다.
 """
 
 SIMULATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션 6개 제품의 정책 시뮬레이션 전문가입니다.
