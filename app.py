@@ -274,7 +274,7 @@ PC에 보안드라이브(암호화 가상디스크)를 생성하여 파일 보�
 | isAllowExtension | **확장자 저장 제한 모드** — true=지정 확장자를 보안드라이브 이외 경로에 저장 차단 / false=지정 확장자만 보안드라이브 이외 경로에 저장 허용 | 🟠 |
 | controlExtension | **제어 대상 확장자 목록** (`;` 구분자) — ⚠️ 방향 주의: 이 목록의 확장자는 **보안드라이브(S:) 이외의 일반 경로에 저장이 차단**됨. 즉 해당 파일은 반드시 보안드라이브에만 저장해야 함. "S:에 저장 금지"가 아니라 "S: 밖에 저장 금지"임. `.1`=전체 확장자 의미. | 🟠 |
 | isHeaderCheck | 파일 헤더 검사(위변조 탐지) | 🟠 |
-| isSignExcept / signExcept | 디지털서명 예외 | 🟡 |
+| isSignExcept / signExcept | **디지털서명 예외** — isSignExcept=true일 때 signExcept 목록의 서명 프로세스는 **보안드라이브 이외 영역 접근을 허용** (제어 제외). 즉 해당 서명 프로세스는 일반 드라이브에도 파일 읽기/쓰기 가능 | 🟡 |
 | controlSuiteProcessList / controlSuiteProcessTagList | 프로세스/태그 제어 목록 | 🔴 |
 | controlSuiteWebRestrictList | 웹 제한 목록 | 🟠 |
 
@@ -282,10 +282,10 @@ PC에 보안드라이브(암호화 가상디스크)를 생성하여 파일 보�
 | 필드 | 설명 | 보안 |
 |------|------|------|
 | isAccessControl | 접근제어 활성화 | 🔴 |
-| isCmd | CMD 차단 | 🔴 |
-| isControlPanel | 제어판 차단 | 🟠 |
-| isRegedit | 레지스트리 편집기 차단 | 🔴 |
-| isMmc | MMC 콘솔 차단 | 🟠 |
+| isCmd | **CMD 허용 여부** ⚠️ true=CMD **사용 가능**(허용) / false=CMD **차단** | 🟠 |
+| isControlPanel | **제어판 허용 여부** ⚠️ true=제어판 **사용 가능**(허용) / false=제어판 **차단** | 🟠 |
+| isRegedit | **Regedit 허용 여부** ⚠️ true=레지스트리 편집기 **사용 가능**(허용) / false=차단 | 🟠 |
+| isMmc | **MMC/Gpedit 허용 여부** ⚠️ true=MMC·그룹정책 편집기 **사용 가능**(허용) / false=차단 | 🟠 |
 | isHideExplorerRecent | 탐색기 최근 항목 숨김 | 🟡 |
 | pickHideDrive | 숨길 드라이브(예:"D,E") | 🟠 |
 | pickDenyDrive | 접근 차단 드라이브 | 🔴 |
@@ -1008,7 +1008,7 @@ isOptionAlwaysUse=false → 트리거 조건 충족 시에만 활성화
 12. 프로세스 템플릿이 '거부'인데 프로세스 0개 → 모든 프로세스 허용됨 (보안 무의미)
 13. secureDriveTemplateId=0 → 보안드라이브 미연결 → SecureZone 무동작 🔴
 14. controlSuiteId=0 → 제어스위트 미연결 → 클립보드/네트워크/확장자 통제 없음 🔴
-15. isAccessControl=true이나 모든 세부(isCmd,isRegedit 등) false → 껍데기 접근제어
+15. isAccessControl=true이나 isCmd/isControlPanel/isRegedit/isMmc 전부 true(허용) → 도구 차단 없음 — 접근제어 활성 상태이나 실질적 차단 효과 미미 ⚠️
 16. usbControlAuth=0(미사용) → USB 반출 자유 🔴
 17. pickDenyDrive에 보안드라이브 문자 포함 → 자기 자신 차단 (설정 충돌)
 18. isRegistEcmDrive=true이나 ECM 에이전트 미설치 → 연동 불가
@@ -1222,8 +1222,8 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
   - 올바른 설명 예시: "txt, docx, pdf 등 지정된 파일은 보안드라이브(S:) 이외의 일반 경로(바탕화면, 내 문서 등)에 저장이 차단됩니다."
   - 잘못된 설명 예시(절대 금지): "해당 확장자가 S:에 저장되지 않도록 제한" — 이것은 방향이 완전히 반대임
 - `controlSuiteTemplate.isHeaderCheck` → 파일 헤더 검사 (파일 위변조 탐지)
-- `controlSuiteTemplate.isSignExcept` → 디지털서명 예외 사용 여부
-- `controlSuiteTemplate.signExcept` → 예외 서명 목록 (`;` 구분자 — 해당 회사 서명 프로세스는 제어 제외)
+- `controlSuiteTemplate.isSignExcept` → 디지털서명 예외 사용 여부 (true=활성화)
+- `controlSuiteTemplate.signExcept` → 예외 서명 목록 (`;` 구분자) — ⚠️ 이 목록의 서명 프로세스는 **보안드라이브 이외 영역 접근이 허용**됨 (일반 드라이브 읽기/쓰기 가능). "제어 제외"이지 "차단"이 아님
 - `controlSuiteTemplate.controlSuiteProcessList` → 프로세스별 개별 제어 설정 목록
   - 각 항목 주요 필드: `processName`, `isClipboardRestrict`, `isNetwork`, `isSandbox`, `controlSuiteProcessIpAddressList`
   - 비어 있으면 "등록된 프로세스별 예외 없음 (전체 일괄 적용)"
@@ -1238,17 +1238,17 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 
 - `policy.szAccessControlPolicyId` / `szAccessControlPolicyName` → 정책 ID / 정책명
 - `policy.isAccessControl` → 접근제어 활성화 (false=⚠️ 아래 모든 접근제어 무효)
-- `policy.isCmd` → CMD(명령 프롬프트) 차단
-- `policy.isControlPanel` → 제어판 차단
-- `policy.isRegedit` → 레지스트리 편집기(regedit) 차단
-- `policy.isMmc` → MMC 콘솔 차단
+- `policy.isCmd` → CMD 허용 여부 (**true=CMD 사용 가능**/false=CMD 차단) ⚠️ true가 차단이 아니라 **허용**임
+- `policy.isControlPanel` → 제어판 허용 여부 (**true=제어판 사용 가능**/false=차단) ⚠️ true=허용
+- `policy.isRegedit` → Regedit 허용 여부 (**true=레지스트리 편집기 사용 가능**/false=차단) ⚠️ true=허용
+- `policy.isMmc` → MMC/Gpedit 허용 여부 (**true=MMC·그룹정책 편집기 사용 가능**/false=차단) ⚠️ true=허용
 - `policy.isHideExplorerRecent` → 탐색기 최근 항목 숨김
 - `policy.pickHideDrive` → 숨길 드라이브 (`"A-Z"` = 전체 숨김 / `"D,E"` = 특정 드라이브)
 - `policy.pickDenyDrive` → 접근 차단 드라이브 (`"A-Z"` = 전체 차단)
 - `policy.pickExceptDrive` → 예외 드라이브 (차단에서 제외 — 쉼표 구분, 예: `"S,W,C,D"`)
   ※ pickDenyDrive와 pickExceptDrive를 함께 읽어야 실제 차단 드라이브 파악 가능
 - `policy.usbControlAuth` → 휴대용 디바이스 권한 (**int** / 0=미사용 / 1=읽기전용(반입만 허용) / 2=완전차단)
-- `policy.isShutdownAccessControl` → 접근제어 종료 허용 여부
+- `policy.isShutdownAccessControl` → 종료 시 접근제어 해제 여부 (true=시큐어존 종료 시 접근제어도 함께 해제 / false=종료해도 접근제어 유지)
 
 ### ② 랜섬크런처 (RansomCruncher) 탐지 정책
 경로: `[설정] > App Setting > [RansomCruncher] > 탐지 정책`
