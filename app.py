@@ -271,8 +271,8 @@ PC에 보안드라이브(암호화 가상디스크)를 생성하여 파일 보�
 |------|------|------|
 | isClipboardRestrict | **클립보드 제한** — 보안↔일반 복붙 차단 | 🔴 |
 | isNetwork | **네트워크 제어** — 통신 제한 | 🔴 |
-| isAllowExtension | 확장자 허용 모드 | 🟠 |
-| controlExtension | 제어 확장자 목록 | 🟠 |
+| isAllowExtension | **확장자 저장 제한 모드** — true=지정 확장자를 보안드라이브 이외 경로에 저장 차단 / false=지정 확장자만 보안드라이브 이외 경로에 저장 허용 | 🟠 |
+| controlExtension | **제어 대상 확장자 목록** (`;` 구분자) — ⚠️ 방향 주의: 이 목록의 확장자는 **보안드라이브(S:) 이외의 일반 경로에 저장이 차단**됨. 즉 해당 파일은 반드시 보안드라이브에만 저장해야 함. "S:에 저장 금지"가 아니라 "S: 밖에 저장 금지"임. `.1`=전체 확장자 의미. | 🟠 |
 | isHeaderCheck | 파일 헤더 검사(위변조 탐지) | 🟠 |
 | isSignExcept / signExcept | 디지털서명 예외 | 🟡 |
 | controlSuiteProcessList / controlSuiteProcessTagList | 프로세스/태그 제어 목록 | 🔴 |
@@ -1215,8 +1215,12 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 **섹션 7: 제어스위트** — `policy.controlSuiteTemplate` 안에 중첩 (별도 H2 섹션으로 출력)
 - `controlSuiteTemplate.isClipboardRestrict` → 클립보드 공유제한 (활성화 시 보안드라이브↔일반 영역 간 복사/붙여넣기를 모든 프로세스에 일괄 차단합니다)
 - `controlSuiteTemplate.isNetwork` → 네트워크 제어 (활성화 시 허용된 IP 외 통신 차단)
-- `controlSuiteTemplate.isAllowExtension` → 확장자 제어 모드 (true=허용목록 / false=차단목록)
-- `controlSuiteTemplate.controlExtension` → 제어 대상 확장자 (`;` 구분자 / `.1`=전체 확장자 의미 / 보안드라이브 이외 영역에 저장 차단)
+- `controlSuiteTemplate.isAllowExtension` / `controlSuiteTemplate.controlExtension` → **제어할 확장자**
+  - ⚠️ 방향 반드시 정확히: 이 확장자들은 **보안드라이브(S:) 이외의 경로에 저장하는 것이 차단**됩니다.
+  - 즉 "보안드라이브에 저장 금지"가 아니라, **"보안드라이브 밖에 저장 금지"** — 반드시 S:에만 저장해야 합니다.
+  - `.1`=전체 확장자 대상 / 나머지는 `;` 구분된 개별 확장자
+  - 올바른 설명 예시: "txt, docx, pdf 등 지정된 파일은 보안드라이브(S:) 이외의 일반 경로(바탕화면, 내 문서 등)에 저장이 차단됩니다."
+  - 잘못된 설명 예시(절대 금지): "해당 확장자가 S:에 저장되지 않도록 제한" — 이것은 방향이 완전히 반대임
 - `controlSuiteTemplate.isHeaderCheck` → 파일 헤더 검사 (파일 위변조 탐지)
 - `controlSuiteTemplate.isSignExcept` → 디지털서명 예외 사용 여부
 - `controlSuiteTemplate.signExcept` → 예외 서명 목록 (`;` 구분자 — 해당 회사 서명 프로세스는 제어 제외)
@@ -1463,7 +1467,7 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 
 - **클립보드 공유제한**: **활성화** — 보안드라이브↔일반 영역 간 복사/붙여넣기가 모든 프로세스에 일괄 차단됩니다.
 - **네트워크 제어**: **활성화** — 허용된 IP 외의 통신이 차단됩니다.
-- **제어할 확장자**: **활성화 (허용목록 모드)** — txt, pptx, doc, docx, xlsx, pdf 등 지정 확장자의 파일을 보안드라이브 이외 영역에 저장하는 것을 차단합니다.
+- **제어할 확장자**: **활성화** — txt, pptx, doc, docx, xlsx, pdf 등 지정된 파일 형식은 **보안드라이브(S:) 이외의 경로(바탕화면, 내 문서, USB 등)에 저장이 차단**됩니다. 해당 파일은 반드시 S: 드라이브에만 저장해야 합니다.
 - **파일 헤더 검사**: **비활성화** — 확장자 위변조 탐지가 꺼져 있습니다.
 - **디지털서명 예외**: **활성화** — Apple, Oracle, Mozilla, Zoom, Slack 등 신뢰 기업 서명 프로세스는 제어에서 제외됩니다.
 - **프로세스별 개별 제어**: code.exe, daoumessenger 4.0.exe, kakaotalk.exe — 3개 프로세스에 개별 네트워크/클립보드 정책 적용됨.
