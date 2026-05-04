@@ -784,18 +784,10 @@ async function runZipAnalyze(zipFile) {
             return;
         }
 
-        // 결과 표시
-        if (resultContent) {
-            resultContent.innerHTML = typeof marked !== 'undefined'
-                ? marked.parse(data.result)
-                : '<pre>' + escapeHtml(data.result) + '</pre>';
-        }
-        if (resultBadge) {
-            const cnt = data.stats ? data.stats.files : '?';
-            resultBadge.textContent = `ZIP 종합 분석 완료 (${cnt}개 파일)`;
-        }
-        if (resultState) resultState.style.display = 'block';
+        // 결과 표시 — 전체화면 오버레이
         lastResult = data.result || '';
+        const cnt = data.stats ? data.stats.files : '?';
+        openResultOverlay(lastResult, 'ZIP 종합 분석 결과', `완료 (${cnt}개 파일)`);
 
     } catch (err) {
         if (loadingState) loadingState.style.display = 'none';
@@ -1030,8 +1022,6 @@ async function analyze() {
         if (data.success) {
             lastResult = data.result;
 
-            // Update badge
-            const badgeText = document.getElementById('resultBadgeText');
             const badgeLabels = {
                 translate: '번역 완료',
                 simulate:  '시뮬레이션 완료',
@@ -1040,21 +1030,24 @@ async function analyze() {
                 conflict:  '충돌 탐지 완료',
                 generate:  '정책 초안 생성 완료'
             };
-            badgeText.textContent = badgeLabels[currentFeature] || '완료';
-
-            // Render markdown
-            const resultContent = document.getElementById('resultContent');
-            if (typeof marked !== 'undefined') {
-                resultContent.innerHTML = marked.parse(data.result);
-            } else {
-                resultContent.innerHTML = '<pre>' + data.result + '</pre>';
-            }
-
-            // Reset feedback buttons
-            document.querySelectorAll('.btn-feedback').forEach(b => b.classList.remove('active'));
+            const titleLabels = {
+                translate: '정책 번역 결과',
+                simulate:  '시뮬레이션 결과',
+                diagnose:  '정책 진단 리포트',
+                diff:      '정책 비교 결과',
+                conflict:  '충돌 탐지 결과',
+                generate:  '정책 초안'
+            };
 
             loadingState.style.display = 'none';
-            resultState.style.display = 'flex';
+            emptyState.style.display = 'flex';   // 입력 패널 원래대로
+
+            // 전체화면 오버레이로 결과 표시
+            openResultOverlay(
+                data.result,
+                titleLabels[currentFeature] || '분석 결과',
+                badgeLabels[currentFeature] || '완료'
+            );
         } else {
             showToast('분석 실패: ' + (data.error || '알 수 없는 오류'));
             loadingState.style.display = 'none';
@@ -1066,6 +1059,100 @@ async function analyze() {
         emptyState.style.display = 'flex';
     } finally {
         btn.disabled = false;
+    }
+}
+
+
+// ═══════════════════════════════════════════
+//  전체화면 결과 오버레이
+// ═══════════════════════════════════════════
+
+function openResultOverlay(markdown, title, badge) {
+    lastResult = markdown;
+
+    const overlay  = document.getElementById('resultOverlay');
+    const content  = document.getElementById('roContent');
+    const titleEl  = document.getElementById('roTitle');
+    const badgeEl  = document.getElementById('roBadge');
+
+    titleEl.textContent = title || '분석 결과';
+    badgeEl.textContent = badge || '완료';
+
+    // 마크다운 렌더링
+    if (typeof marked !== 'undefined') {
+        content.innerHTML = marked.parse(markdown);
+    } else {
+        content.innerHTML = '<pre>' + escapeHtml(markdown) + '</pre>';
+    }
+
+    overlay.style.display = 'flex';
+    content.scrollTop = 0;
+    overlay.scrollTop = 0;
+
+    // Esc 키로 닫기
+    document.addEventListener('keydown', _roEscHandler);
+}
+
+function closeResultOverlay() {
+    const overlay = document.getElementById('resultOverlay');
+    overlay.style.display = 'none';
+    document.removeEventListener('keydown', _roEscHandler);
+}
+
+function _roEscHandler(e) {
+    if (e.key === 'Escape') closeResultOverlay();
+}
+
+function copyOverlayResult() {
+    if (!lastResult) return;
+    navigator.clipboard.writeText(lastResult).then(() => showToast('마크다운 복사 완료'));
+}
+
+async function downloadWord() {
+    if (!lastResult) { showToast('저장할 결과가 없습니다'); return; }
+
+    const btn = document.getElementById('roWordBtn');
+    const origHTML = btn.innerHTML;
+    btn.classList.add('loading');
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> 변환 중...`;
+
+    try {
+        // 파일명: 제목 + 날짜
+        const titleEl = document.getElementById('roTitle');
+        const base = (titleEl ? titleEl.textContent : '정책분석')
+                        .replace(/[\\/:*?"<>|]/g, '_');
+        const today = new Date().toISOString().slice(0, 10);
+        const filename = `${base}_${today}`;
+
+        const res = await fetch('/api/export-docx', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ markdown: lastResult, filename })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            showToast('Word 저장 실패: ' + (err.error || 'unknown'));
+            return;
+        }
+
+        // Blob 다운로드
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename + '.docx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast('Word 파일 다운로드 완료 ✓');
+
+    } catch (err) {
+        showToast('Word 변환 오류: ' + err.message);
+    } finally {
+        btn.classList.remove('loading');
+        btn.innerHTML = origHTML;
     }
 }
 

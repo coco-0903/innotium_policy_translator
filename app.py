@@ -1109,51 +1109,173 @@ TRANSLATE_PROMPT = f"""당신은 이노티움(Innotium) 보안 솔루션의 정�
 6. 빈 배열([]) / null → "등록된 항목 없음"으로 표시하세요.
 7. 기본값이나 0인 항목은 "(기본값)" 표기 후 간략히 언급하세요.
 8. 아래 출력 구조를 **반드시** 그대로 따르세요.
+9. **생략 절대 금지** — "나머지는 기본값", "설정 없음" 등으로 묶어서 처리하지 마세요. JSON에 있는 **모든 필드**를 빠짐없이 각각 출력하세요.
+10. **시큐어존 4개 섹션 필수** — 시큐어존 정책이 입력된 경우 반드시 아래 4개 섹션으로 분리 출력하세요.
+11. **에이전트 로그 섹션 필수** — 로그 입력이 있는 경우 마지막에 반드시 에이전트 로그 섹션을 추가하고, 에러/경고 로그를 모두 나열하세요.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-출력 구조
+출력 구조 (시큐어존 기준 — 다른 제품은 동일 원칙으로 해당 섹션 구성)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## 정책 개요
+## 📋 정책 개요
 
-> **[제품명] > [정책 유형]** | 정책명: `정책 이름`
-> 생성일: YYYY-MM-DD | 유형: 유형명 | 상태: 활성/비활성
+> **SecureZone > 통합 정책** | 정책명: `[정책명]`
+> 생성일: YYYY-MM-DD | 제품 버전: [버전] | 상태: 활성/비활성
 
 한 줄 요약: 이 정책이 어떤 목적으로 구성된 정책인지 1문장으로 설명.
 
 ---
 
-## [설정] > [메뉴] > [섹션명]
+## 🔒 섹션 1 — 시큐어존 에이전트 정책
+> **경로**: `[설정] > App Setting > Secure Zone > 시큐어존 정책`
 
-> **경로**: `[설정] > App Setting > [제품명] > 해당 섹션`
+### 1-1. 기본 정보
+- **정책명**: `[이름]` — 정책 식별자입니다.
+- **정책 유형**: [DEFAULT=일반정책 / TAKEOUT_DEFAULT=반출기본정책] — 설명.
+- **연결된 제어스위트**: `[이름 (ID: N)]` — 클립보드·확장자·네트워크 제어 설정입니다.
 
-각 설정을 아래 형식으로 나열:
+### 1-2. 보안드라이브 연결
+- **보안드라이브 템플릿**: `[이름 (ID: N)]` — 보안드라이브 구성을 정의하는 템플릿입니다. (ID=0이면 ⚠️ 미연결 — 보안드라이브 미동작)
+- **반출드라이브 차단**: [활성화/비활성화] — 설명.
 
-- **UI 설정명**: **현재 값(의미어)** — 이 설정이 실제로 하는 동작을 한 문장으로 설명합니다.
-- **다른 설정명**: **현재 값** — 설명.
-- ⚠️ **위험 설정명**: **현재 값** — 이 설정은 보안상 위험할 수 있으므로, 구체적 위험을 명시합니다.
+### 1-3. 프로세스 통제
+(isAllowDenyProcess 값에 따라 모드 설명)
+- **프로세스 허용/차단 기능**: [활성화/비활성화]
+- **프로세스 통제 모드**: [미사용 / 차단목록(블랙리스트) / 허용목록(화이트리스트)] — 설명.
+- **등록된 프로세스**: N개 — [프로세스명 목록 전부 나열]
+- **실행차단 프로세스**: [활성화/비활성화] — 설명.
+- **예외 프로세스**: [목록 전부 나열 또는 "등록된 항목 없음"]
+- **허용목록 외 강제종료**: [활성화/비활성화] — 설명.
 
-*(섹션마다 H2 헤더로 구분, 섹션명은 아래 제품별 기준 참고)*
+### 1-4. 파일 감시
+- **파일 감시**: [활성화/비활성화] — 보안드라이브 밖에 저장된 파일을 자동으로 보안드라이브로 가져옵니다.
+- **폴더 변경 감시**: [활성화/비활성화]
+- **확장자 필터**: [활성화/비활성화] / 감시 확장자: [목록 또는 "없음"]
+- **파일 헤더 감시**: [활성화/비활성화]
+
+### 1-5. 출력·프린트 제어
+- **출력 제어 기능**: [활성화/비활성화]
+- **출력 허용**: [허용/차단] — 설명.
+
+### 1-6. 에이전트 동작
+- **오프라인 모드**: [허용/차단] — 네트워크 단절 시 보안드라이브 접근 가능 여부.
+- **에이전트 로그인**: [필요/불필요]
+- **보안드라이브 차단 대기**: [N분 / 즉시] — 설명.
+- ⚠️ **에이전트 종료 메뉴 표시**: [표시/숨김] — true이면 사용자가 에이전트를 직접 종료 가능(보안 약화).
+- **비상코드 메뉴**: [표시/숨김]
+- **관리 폴더**: [활성화/비활성화]
+- **서버 동기화 폴더**: [활성화/비활성화] / 동기화 목록: [전부 나열]
 
 ---
 
-## 연결된 구성요소
+## 💾 섹션 2 — 보안드라이브 템플릿
+> **경로**: `[설정] > App Setting > Secure Zone > 템플릿 관리`
 
-참조 ID가 있는 경우 (템플릿, 제어스위트 등):
-- **보안드라이브 템플릿 ID**: `123` — 보안드라이브 구성(드라이브 문자, 용량 등)을 정의하는 템플릿입니다.
-- (ID가 0이면 "미연결 — 주요 기능이 동작하지 않을 수 있음" 경고)
+### 2-1. 드라이브 기본 설정
+- **보안드라이브 문자**: `[문자]:` — 보안드라이브로 사용할 드라이브 문자입니다.
+- **보안드라이브 레이블**: `[레이블]` — 탐색기에 표시될 이름입니다.
+- **가상디스크 파일 경로**: `[경로]` — 보안드라이브 컨테이너 파일이 저장되는 위치입니다.
+
+### 2-2. 반출드라이브 설정
+- **반출드라이브 문자**: `[문자]:` — 반출 시 사용할 임시 드라이브입니다.
+- **반출드라이브 레이블**: `[레이블]`
+- **반출드라이브 용량**: [N MB / 무제한(0)] — MB 단위, 0=무제한.
+- **반출 경로 숨김**: [활성화/비활성화]
+- **반출 경로 접근 차단**: [활성화/비활성화]
+
+### 2-3. 연동 설정
+- **ECM 드라이브 연동**: [활성화/비활성화] — innoECM과 연동하여 반출을 ECM으로 처리합니다.
 
 ---
 
-## 보안 수준 요약
+## 🛡️ 섹션 3 — 접근제어 정책
+> **경로**: `[설정] > App Setting > Secure Zone > 접근제어 정책`
+
+### 3-1. 시스템 도구 허용 설정
+⚠️ 아래 항목은 **true=허용(사용 가능)**, **false=차단** — 일반적인 true=활성화와 방향이 다릅니다.
+- **접근제어 활성화**: [활성화/비활성화] — 비활성화 시 아래 모든 설정 무효.
+- **CMD(명령 프롬프트) 허용**: [허용/차단] — true=사용자가 CMD 실행 가능.
+- **제어판 허용**: [허용/차단] — true=제어판 접근 가능.
+- **레지스트리 편집기(regedit) 허용**: [허용/차단] — true=regedit 실행 가능.
+- **MMC/그룹정책 편집기 허용**: [허용/차단] — true=MMC·gpedit 실행 가능.
+- **종료 시 접근제어 해제**: [해제/유지] — true=시큐어존 종료 시 접근제어도 함께 해제.
+
+### 3-2. 탐색기·드라이브 제어
+- **탐색기 최근 항목 숨김**: [활성화/비활성화]
+- **숨길 드라이브**: `[문자 목록]` — 탐색기에서 숨길 드라이브입니다. (예: A-Z=전체)
+- **접근 차단 드라이브**: `[문자 목록]` — 접근 자체를 차단할 드라이브입니다.
+- **차단 예외 드라이브**: `[문자 목록]` — 차단에서 제외할 드라이브 (S,W,C 등).
+  - 실제 차단 드라이브 = 접근차단 드라이브 **빼기** 차단 예외 드라이브
+
+### 3-3. USB·이동식 장치 제어
+- **휴대용 디바이스 권한**: [미사용(0) / 읽기전용-반입만허용(1) / 완전차단(2)] — 설명.
+
+---
+
+## ⚙️ 섹션 4 — 제어스위트
+> **경로**: `[설정] > App Setting > Secure Zone > 제어스위트`
+
+### 4-1. 클립보드·네트워크 제어
+- **클립보드 공유제한**: [활성화/비활성화] — 활성화 시 보안드라이브↔일반 영역 간 복사/붙여넣기를 모든 프로세스에 일괄 차단합니다.
+- **네트워크 제어**: [활성화/비활성화] — 활성화 시 허용된 IP 외 통신 차단.
+
+### 4-2. 확장자 저장 제어
+⚠️ 방향 주의: 아래 확장자들은 **보안드라이브(S:) 이외 일반 경로에 저장이 차단**됩니다 — "S:에 저장 금지"가 아니라 "S: 밖에 저장 금지"입니다.
+- **확장자 제어 모드**: [전체제어(true) / 지정확장자만허용(false)] — 설명.
+- **제어 대상 확장자**: [목록 전부 나열 / `.1`=전체확장자] — 각 확장자의 제한 내용 설명.
+
+### 4-3. 파일 무결성
+- **파일 헤더 검사**: [활성화/비활성화] — 파일 위변조를 탐지합니다.
+- **디지털서명 예외**: [활성화/비활성화] — 활성화 시 지정 서명 프로세스는 보안드라이브 이외 영역 접근이 허용됩니다.
+- **서명 예외 목록**: [목록 전부 나열 또는 "등록된 항목 없음"]
+
+### 4-4. 프로세스별 개별 제어
+(controlSuiteProcessList 항목을 **한 개씩 전부** 아래 형식으로 출력)
+- **[프로세스명]**: 클립보드=[활성/비활성] / 네트워크=[활성/비활성] / 샌드박스=[활성/비활성] / 허용IP=[목록]
+
+(목록이 비어있으면: "등록된 프로세스별 예외 없음 — 제어스위트 설정이 전체 프로세스에 일괄 적용됩니다.")
+
+### 4-5. 웹 URL 제한
+(controlSuiteWebRestrictList 항목을 **한 개씩 전부** 나열)
+- **[브라우저명]**: 허용 확장자=[목록]
+
+(비어있으면: "웹 URL 제한 없음")
+
+---
+
+## 📊 보안 수준 요약
 
 | 항목 | 상태 |
 |------|------|
 | 전체 보안 수준 | 상 / 중 / 하 |
-| 주요 활성 보호 | 항목 나열 |
-| 비활성화된 주요 기능 | 항목 나열 (⚠️ 표시) |
+| 주요 활성 보호 | [항목 나열] |
+| ⚠️ 비활성화된 주요 기능 | [항목 나열] |
+| ⚠️ 위험 설정 | [항목 나열] |
 
 권고사항: 개선이 필요한 설정 1~3개를 간결하게 제안.
+
+---
+
+## 🖥️ 섹션 5 — 에이전트 로그 분석 (로그 입력 시 필수)
+> 에이전트 로그가 입력된 경우 반드시 이 섹션을 포함하세요.
+
+### 5-1. 수신된 정책 파일 목록
+| 파일명 | 정책 유형 | 상태 |
+|--------|----------|------|
+| [파일명] | [유형] | [정상/오류] |
+
+### 5-2. 에러 및 경고 로그 (전체 나열)
+> 에러/경고 로그가 있는 경우 **빠짐없이 전부** 나열하세요.
+
+| 시각 | 레벨 | 내용 | 원인 추정 |
+|------|------|------|----------|
+| [시각] | ERROR/WARN | [메시지 전문] | [추정 원인] |
+
+(에러 없으면: "수신 로그에서 에러/경고 항목 없음 — 정상 동작 중")
+
+### 5-3. 정책 수신 요약
+- 총 수신 파일: N개 / 성공: N개 / 실패: N개
+- 마지막 수신 시각: [시각]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 제품별 섹션 구조 및 필드→UI명칭 매핑
@@ -2740,6 +2862,289 @@ def api_rag_search():
     except Exception as e:
         logger.error(f"RAG search 오류: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════
+# Word 문서 내보내기 (markdown → .docx)
+# ═══════════════════════════════════════════════════
+
+def _markdown_to_docx(markdown_text):
+    """마크다운 텍스트를 python-docx Document 객체로 변환"""
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import re, io
+
+    doc = Document()
+
+    # 기본 폰트·여백 설정
+    section = doc.sections[0]
+    section.left_margin   = Inches(1.0)
+    section.right_margin  = Inches(1.0)
+    section.top_margin    = Inches(1.0)
+    section.bottom_margin = Inches(1.0)
+
+    # 기본 스타일 폰트
+    style = doc.styles['Normal']
+    style.font.name = 'Malgun Gothic'
+    style.font.size = Pt(10)
+
+    lines = markdown_text.split('\n')
+
+    def add_heading(text, level):
+        clean = re.sub(r'^[#]+\s*', '', text).strip()
+        # 이모지 제거 (docx에서 깨질 수 있음)
+        clean = re.sub(r'[\U00010000-\U0010ffff]', '', clean)
+        clean = re.sub(r'[^\x00-\xFFFF]', '', clean)
+        para = doc.add_heading(clean, level=level)
+        for run in para.runs:
+            run.font.name = 'Malgun Gothic'
+            if level == 1:
+                run.font.size = Pt(16)
+                run.font.color.rgb = RGBColor(0x1a, 0x56, 0x76)
+            elif level == 2:
+                run.font.size = Pt(13)
+                run.font.color.rgb = RGBColor(0x1a, 0x56, 0x76)
+            else:
+                run.font.size = Pt(11)
+                run.font.color.rgb = RGBColor(0x33, 0x66, 0x88)
+
+    def add_paragraph_with_markup(text):
+        """**bold** 마크업을 run 분리하여 처리"""
+        para = doc.add_paragraph()
+        para.paragraph_format.space_after = Pt(2)
+        # ⚠️ 로 시작하면 살짝 강조
+        if text.strip().startswith('⚠️') or text.strip().startswith('- ⚠️'):
+            para.paragraph_format.left_indent = Inches(0.1)
+
+        # **text** 패턴 파싱
+        pattern = r'\*\*(.*?)\*\*'
+        parts = re.split(pattern, text)
+        for i, part in enumerate(parts):
+            part = re.sub(r'`([^`]+)`', r'\1', part)  # 인라인 코드 역따옴표 제거
+            run = para.add_run(part)
+            run.font.name = 'Malgun Gothic'
+            run.font.size = Pt(10)
+            if i % 2 == 1:  # 홀수 인덱스 = bold 구간
+                run.bold = True
+        return para
+
+    def add_bullet(text):
+        """- 로 시작하는 불릿 항목"""
+        clean = text.lstrip('- ').strip()
+        para = doc.add_paragraph(style='List Bullet')
+        pattern = r'\*\*(.*?)\*\*'
+        parts = re.split(pattern, clean)
+        for i, part in enumerate(parts):
+            part = re.sub(r'`([^`]+)`', r'\1', part)
+            run = para.add_run(part)
+            run.font.name = 'Malgun Gothic'
+            run.font.size = Pt(10)
+            if i % 2 == 1:
+                run.bold = True
+
+    def add_table_row(cells, is_header=False):
+        return cells
+
+    # 테이블 수집 상태
+    table_rows = []
+    in_table = False
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # 빈 줄
+        if not stripped:
+            if in_table and table_rows:
+                # 테이블 flush
+                if len(table_rows) >= 2:
+                    col_count = max(len(r) for r in table_rows)
+                    t = doc.add_table(rows=0, cols=col_count)
+                    t.style = 'Table Grid'
+                    for ri, row_cells in enumerate(table_rows):
+                        if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
+                            continue  # 구분선 스킵
+                        tr = t.add_row()
+                        for ci, cell_text in enumerate(row_cells[:col_count]):
+                            cell_text = cell_text.strip()
+                            cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
+                            c = tr.cells[ci]
+                            c.text = cell_text
+                            for para in c.paragraphs:
+                                for run in para.runs:
+                                    run.font.name = 'Malgun Gothic'
+                                    run.font.size = Pt(9)
+                                    if ri == 0:
+                                        run.bold = True
+                doc.add_paragraph()
+                table_rows = []
+            in_table = False
+            i += 1
+            continue
+
+        # 구분선 --- 는 스킵
+        if re.match(r'^---+$', stripped):
+            doc.add_paragraph()
+            i += 1
+            continue
+
+        # 헤딩
+        if stripped.startswith('# '):
+            if in_table and table_rows:
+                in_table = False; table_rows = []
+            add_heading(stripped, 1)
+            i += 1
+            continue
+        if stripped.startswith('## '):
+            if in_table and table_rows:
+                in_table = False; table_rows = []
+            add_heading(stripped, 2)
+            i += 1
+            continue
+        if stripped.startswith('### '):
+            if in_table and table_rows:
+                in_table = False; table_rows = []
+            add_heading(stripped, 3)
+            i += 1
+            continue
+        if stripped.startswith('#### '):
+            add_heading(stripped, 4)
+            i += 1
+            continue
+
+        # 인용문 > ...
+        if stripped.startswith('>'):
+            clean = re.sub(r'^>\s*', '', stripped)
+            para = doc.add_paragraph(style='Quote')
+            run = para.add_run(re.sub(r'\*\*(.*?)\*\*', r'\1', clean))
+            run.font.name = 'Malgun Gothic'
+            run.font.size = Pt(9)
+            i += 1
+            continue
+
+        # 테이블 행
+        if stripped.startswith('|') and stripped.endswith('|'):
+            in_table = True
+            cells = [c.strip() for c in stripped.split('|')[1:-1]]
+            table_rows.append(cells)
+            i += 1
+            continue
+
+        # 테이블이 끝났는데 아직 flush 안 됨
+        if in_table and table_rows:
+            if len(table_rows) >= 2:
+                col_count = max(len(r) for r in table_rows)
+                t = doc.add_table(rows=0, cols=col_count)
+                t.style = 'Table Grid'
+                for ri, row_cells in enumerate(table_rows):
+                    if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
+                        continue
+                    tr = t.add_row()
+                    for ci, cell_text in enumerate(row_cells[:col_count]):
+                        cell_text = cell_text.strip()
+                        cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
+                        c = tr.cells[ci]
+                        c.text = cell_text
+                        for para in c.paragraphs:
+                            for run in para.runs:
+                                run.font.name = 'Malgun Gothic'
+                                run.font.size = Pt(9)
+                                if ri == 0:
+                                    run.bold = True
+            doc.add_paragraph()
+            table_rows = []
+            in_table = False
+
+        # 불릿 리스트 (- 또는 * 로 시작)
+        if re.match(r'^[-*]\s', stripped):
+            add_bullet(stripped)
+            i += 1
+            continue
+
+        # 일반 단락
+        add_paragraph_with_markup(stripped)
+        i += 1
+
+    # 마지막 테이블 flush
+    if in_table and table_rows and len(table_rows) >= 2:
+        col_count = max(len(r) for r in table_rows)
+        t = doc.add_table(rows=0, cols=col_count)
+        t.style = 'Table Grid'
+        for ri, row_cells in enumerate(table_rows):
+            if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
+                continue
+            tr = t.add_row()
+            for ci, cell_text in enumerate(row_cells[:col_count]):
+                cell_text = cell_text.strip()
+                cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
+                c = tr.cells[ci]
+                c.text = cell_text
+                for para in c.paragraphs:
+                    for run in para.runs:
+                        run.font.name = 'Malgun Gothic'
+                        run.font.size = Pt(9)
+                        if ri == 0:
+                            run.bold = True
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@app.route('/api/export-docx', methods=['POST'])
+def export_docx():
+    """마크다운 분석 결과를 Word(.docx)로 변환하여 다운로드"""
+    try:
+        from flask import send_file
+        data = request.get_json(force=True)
+        markdown_text = data.get('markdown', '').strip()
+        raw_filename   = data.get('filename', '정책분석결과')
+        # 파일명 안전 처리
+        safe_name = re.sub(r'[\\/:*?"<>|]', '_', raw_filename)
+        filename  = safe_name + '.docx'
+
+        if not markdown_text:
+            return jsonify({'error': '변환할 내용이 없습니다'}), 400
+
+        # 방법 1: pypandoc (pandoc 설치된 경우 최고 품질)
+        try:
+            import pypandoc, tempfile, os
+            tmp = tempfile.NamedTemporaryFile(suffix='.docx', delete=False)
+            tmp.close()
+            pypandoc.convert_text(
+                markdown_text, 'docx', format='markdown',
+                outputfile=tmp.name,
+                extra_args=['--standalone']
+            )
+            response = send_file(
+                tmp.name, as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            @response.call_on_close
+            def cleanup():
+                try: os.unlink(tmp.name)
+                except Exception: pass
+            return response
+        except (ImportError, Exception):
+            pass  # fallback to python-docx
+
+        # 방법 2: python-docx 자체 변환
+        buf = _markdown_to_docx(markdown_text)
+        return send_file(
+            buf, as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+
+    except ImportError:
+        return jsonify({'error': 'python-docx 미설치. pip install python-docx 후 재시도'}), 503
+    except Exception as e:
+        logger.error(f"export-docx 오류: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
