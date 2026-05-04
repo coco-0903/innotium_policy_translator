@@ -1,4 +1,9 @@
 flask
 flask-cors
-google-genai
+flask-limiter
+anthropic
 python-dotenv
+pymysql
+DBUtils
+gunicorn
+python-docx
