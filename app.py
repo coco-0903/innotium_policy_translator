@@ -2870,224 +2870,184 @@ def api_rag_search():
 # ═══════════════════════════════════════════════════
 
 def _markdown_to_docx(markdown_text):
-    """마크다운 텍스트를 python-docx Document 객체로 변환"""
+    """마크다운 텍스트를 python-docx Document 객체로 변환 (한국어 폰트 완전 지원)"""
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    import re, io
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    import io
+
+    FONT = 'Malgun Gothic'   # 한국어 기본 폰트
+
+    # ── 핵심 헬퍼: 한국어 포함 모든 문자에 폰트 적용 ──
+    # run.font.name 은 라틴 폰트(w:ascii)만 바꾸므로 한국어가 깨짐
+    # w:eastAsia 를 XML로 직접 설정해야 한국어가 제대로 표시됨
+    def _set_font(run, size_pt=10, bold=None, color=None):
+        # XML rFonts 요소에 ascii·hAnsi·eastAsia·cs 모두 지정
+        rPr = run._r.get_or_add_rPr()
+        rFonts = rPr.find(qn('w:rFonts'))
+        if rFonts is None:
+            rFonts = OxmlElement('w:rFonts')
+            rPr.insert(0, rFonts)
+        for attr in ('w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs'):
+            rFonts.set(qn(attr), FONT)
+        run.font.size = Pt(size_pt)
+        if bold is not None:
+            run.bold = bold
+        if color:
+            run.font.color.rgb = color
+
+    # ── 문서 기본 폰트도 eastAsia 포함하여 설정 ──
+    def _set_doc_default_font(doc):
+        styles_el = doc.styles.element
+        docDefaults = styles_el.find(qn('w:docDefaults'))
+        if docDefaults is None:
+            docDefaults = OxmlElement('w:docDefaults')
+            styles_el.insert(0, docDefaults)
+        rPrDef = docDefaults.find(qn('w:rPrDefault'))
+        if rPrDef is None:
+            rPrDef = OxmlElement('w:rPrDefault')
+            docDefaults.append(rPrDef)
+        rPr = rPrDef.find(qn('w:rPr'))
+        if rPr is None:
+            rPr = OxmlElement('w:rPr')
+            rPrDef.append(rPr)
+        rFonts = rPr.find(qn('w:rFonts'))
+        if rFonts is None:
+            rFonts = OxmlElement('w:rFonts')
+            rPr.insert(0, rFonts)
+        for attr in ('w:ascii', 'w:hAnsi', 'w:eastAsia', 'w:cs'):
+            rFonts.set(qn(attr), FONT)
+        # 기본 크기
+        sz = rPr.find(qn('w:sz'))
+        if sz is None:
+            sz = OxmlElement('w:sz'); rPr.append(sz)
+        sz.set(qn('w:val'), '20')   # 10pt = 20 half-points
+        szCs = rPr.find(qn('w:szCs'))
+        if szCs is None:
+            szCs = OxmlElement('w:szCs'); rPr.append(szCs)
+        szCs.set(qn('w:val'), '20')
 
     doc = Document()
+    _set_doc_default_font(doc)
 
-    # 기본 폰트·여백 설정
     section = doc.sections[0]
     section.left_margin   = Inches(1.0)
     section.right_margin  = Inches(1.0)
     section.top_margin    = Inches(1.0)
     section.bottom_margin = Inches(1.0)
 
-    # 기본 스타일 폰트
-    style = doc.styles['Normal']
-    style.font.name = 'Malgun Gothic'
-    style.font.size = Pt(10)
+    # Normal 스타일 기본 크기
+    doc.styles['Normal'].font.size = Pt(10)
 
     lines = markdown_text.split('\n')
 
+    # ── 이모지 · 4바이트 유니코드 제거 (docx 렌더 오류 방지) ──
+    def _clean(text):
+        return re.sub(r'[\U00010000-\U0010FFFF]', '', text)
+
+    # ── **bold** 파싱하여 run 분리 추가 ──
+    def _add_runs(para, text, size_pt=10, color=None):
+        text = re.sub(r'`([^`]+)`', r'\1', text)   # 인라인 코드 역따옴표 제거
+        text = _clean(text)
+        parts = re.split(r'\*\*(.*?)\*\*', text)
+        for idx, part in enumerate(parts):
+            if not part:
+                continue
+            run = para.add_run(part)
+            _set_font(run, size_pt=size_pt, bold=(idx % 2 == 1), color=color)
+
     def add_heading(text, level):
-        clean = re.sub(r'^[#]+\s*', '', text).strip()
-        # 이모지 제거 (docx에서 깨질 수 있음)
-        clean = re.sub(r'[\U00010000-\U0010ffff]', '', clean)
-        clean = re.sub(r'[^\x00-\xFFFF]', '', clean)
-        para = doc.add_heading(clean, level=level)
-        for run in para.runs:
-            run.font.name = 'Malgun Gothic'
-            if level == 1:
-                run.font.size = Pt(16)
-                run.font.color.rgb = RGBColor(0x1a, 0x56, 0x76)
-            elif level == 2:
-                run.font.size = Pt(13)
-                run.font.color.rgb = RGBColor(0x1a, 0x56, 0x76)
-            else:
-                run.font.size = Pt(11)
-                run.font.color.rgb = RGBColor(0x33, 0x66, 0x88)
+        clean = re.sub(r'^#+\s*', '', text).strip()
+        clean = _clean(clean)
+        para = doc.add_heading('', level=level)
+        colors = {1: RGBColor(0x1a,0x56,0x76), 2: RGBColor(0x1a,0x56,0x76),
+                  3: RGBColor(0x22,0x66,0x99), 4: RGBColor(0x44,0x44,0x44)}
+        sizes  = {1: 16, 2: 13, 3: 11, 4: 10}
+        run = para.add_run(clean)
+        _set_font(run, size_pt=sizes.get(level, 10),
+                  bold=True, color=colors.get(level))
 
     def add_paragraph_with_markup(text):
-        """**bold** 마크업을 run 분리하여 처리"""
         para = doc.add_paragraph()
         para.paragraph_format.space_after = Pt(2)
-        # ⚠️ 로 시작하면 살짝 강조
-        if text.strip().startswith('⚠️') or text.strip().startswith('- ⚠️'):
-            para.paragraph_format.left_indent = Inches(0.1)
-
-        # **text** 패턴 파싱
-        pattern = r'\*\*(.*?)\*\*'
-        parts = re.split(pattern, text)
-        for i, part in enumerate(parts):
-            part = re.sub(r'`([^`]+)`', r'\1', part)  # 인라인 코드 역따옴표 제거
-            run = para.add_run(part)
-            run.font.name = 'Malgun Gothic'
-            run.font.size = Pt(10)
-            if i % 2 == 1:  # 홀수 인덱스 = bold 구간
-                run.bold = True
+        _add_runs(para, text, size_pt=10)
         return para
 
     def add_bullet(text):
-        """- 로 시작하는 불릿 항목"""
-        clean = text.lstrip('- ').strip()
+        clean = re.sub(r'^[-*]\s+', '', text).strip()
         para = doc.add_paragraph(style='List Bullet')
-        pattern = r'\*\*(.*?)\*\*'
-        parts = re.split(pattern, clean)
-        for i, part in enumerate(parts):
-            part = re.sub(r'`([^`]+)`', r'\1', part)
-            run = para.add_run(part)
-            run.font.name = 'Malgun Gothic'
-            run.font.size = Pt(10)
-            if i % 2 == 1:
-                run.bold = True
+        _add_runs(para, clean, size_pt=10)
 
-    def add_table_row(cells, is_header=False):
-        return cells
+    def flush_table(rows):
+        if len(rows) < 1:
+            return
+        col_count = max(len(r) for r in rows)
+        t = doc.add_table(rows=0, cols=col_count)
+        t.style = 'Table Grid'
+        data_rows = [r for ri, r in enumerate(rows)
+                     if not (ri == 1 and all(set(c.strip()) <= set('-| ') for c in r))]
+        for ri, row_cells in enumerate(data_rows):
+            tr = t.add_row()
+            for ci in range(col_count):
+                cell_text = row_cells[ci].strip() if ci < len(row_cells) else ''
+                cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
+                cell_text = _clean(cell_text)
+                c = tr.cells[ci]
+                c.text = ''
+                run = c.paragraphs[0].add_run(cell_text)
+                _set_font(run, size_pt=9, bold=(ri == 0))
+        doc.add_paragraph()
 
-    # 테이블 수집 상태
     table_rows = []
-    in_table = False
+    in_table   = False
 
     i = 0
     while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
+        stripped = lines[i].strip()
 
-        # 빈 줄
         if not stripped:
             if in_table and table_rows:
-                # 테이블 flush
-                if len(table_rows) >= 2:
-                    col_count = max(len(r) for r in table_rows)
-                    t = doc.add_table(rows=0, cols=col_count)
-                    t.style = 'Table Grid'
-                    for ri, row_cells in enumerate(table_rows):
-                        if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
-                            continue  # 구분선 스킵
-                        tr = t.add_row()
-                        for ci, cell_text in enumerate(row_cells[:col_count]):
-                            cell_text = cell_text.strip()
-                            cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
-                            c = tr.cells[ci]
-                            c.text = cell_text
-                            for para in c.paragraphs:
-                                for run in para.runs:
-                                    run.font.name = 'Malgun Gothic'
-                                    run.font.size = Pt(9)
-                                    if ri == 0:
-                                        run.bold = True
-                doc.add_paragraph()
-                table_rows = []
-            in_table = False
+                flush_table(table_rows)
+                table_rows = []; in_table = False
             i += 1
             continue
 
-        # 구분선 --- 는 스킵
-        if re.match(r'^---+$', stripped):
+        if re.match(r'^-{3,}$', stripped):
+            if in_table and table_rows:
+                flush_table(table_rows)
+                table_rows = []; in_table = False
             doc.add_paragraph()
             i += 1
             continue
 
-        # 헤딩
-        if stripped.startswith('# '):
-            if in_table and table_rows:
-                in_table = False; table_rows = []
-            add_heading(stripped, 1)
-            i += 1
-            continue
-        if stripped.startswith('## '):
-            if in_table and table_rows:
-                in_table = False; table_rows = []
-            add_heading(stripped, 2)
-            i += 1
-            continue
-        if stripped.startswith('### '):
-            if in_table and table_rows:
-                in_table = False; table_rows = []
-            add_heading(stripped, 3)
-            i += 1
-            continue
-        if stripped.startswith('#### '):
-            add_heading(stripped, 4)
-            i += 1
-            continue
-
-        # 인용문 > ...
-        if stripped.startswith('>'):
-            clean = re.sub(r'^>\s*', '', stripped)
-            para = doc.add_paragraph(style='Quote')
-            run = para.add_run(re.sub(r'\*\*(.*?)\*\*', r'\1', clean))
-            run.font.name = 'Malgun Gothic'
-            run.font.size = Pt(9)
-            i += 1
-            continue
-
-        # 테이블 행
         if stripped.startswith('|') and stripped.endswith('|'):
             in_table = True
-            cells = [c.strip() for c in stripped.split('|')[1:-1]]
-            table_rows.append(cells)
+            table_rows.append([c.strip() for c in stripped.split('|')[1:-1]])
             i += 1
             continue
 
-        # 테이블이 끝났는데 아직 flush 안 됨
         if in_table and table_rows:
-            if len(table_rows) >= 2:
-                col_count = max(len(r) for r in table_rows)
-                t = doc.add_table(rows=0, cols=col_count)
-                t.style = 'Table Grid'
-                for ri, row_cells in enumerate(table_rows):
-                    if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
-                        continue
-                    tr = t.add_row()
-                    for ci, cell_text in enumerate(row_cells[:col_count]):
-                        cell_text = cell_text.strip()
-                        cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
-                        c = tr.cells[ci]
-                        c.text = cell_text
-                        for para in c.paragraphs:
-                            for run in para.runs:
-                                run.font.name = 'Malgun Gothic'
-                                run.font.size = Pt(9)
-                                if ri == 0:
-                                    run.bold = True
-            doc.add_paragraph()
-            table_rows = []
-            in_table = False
+            flush_table(table_rows)
+            table_rows = []; in_table = False
 
-        # 불릿 리스트 (- 또는 * 로 시작)
-        if re.match(r'^[-*]\s', stripped):
+        m = re.match(r'^(#{1,4})\s', stripped)
+        if m:
+            add_heading(stripped, len(m.group(1)))
+        elif stripped.startswith('>'):
+            clean = _clean(re.sub(r'^>\s*', '', stripped))
+            para = doc.add_paragraph(style='Quote')
+            run = para.add_run(re.sub(r'\*\*(.*?)\*\*', r'\1', clean))
+            _set_font(run, size_pt=9)
+        elif re.match(r'^[-*]\s', stripped):
             add_bullet(stripped)
-            i += 1
-            continue
+        else:
+            add_paragraph_with_markup(stripped)
 
-        # 일반 단락
-        add_paragraph_with_markup(stripped)
         i += 1
 
-    # 마지막 테이블 flush
-    if in_table and table_rows and len(table_rows) >= 2:
-        col_count = max(len(r) for r in table_rows)
-        t = doc.add_table(rows=0, cols=col_count)
-        t.style = 'Table Grid'
-        for ri, row_cells in enumerate(table_rows):
-            if ri == 1 and all(set(c.strip()) <= set('-| ') for c in row_cells):
-                continue
-            tr = t.add_row()
-            for ci, cell_text in enumerate(row_cells[:col_count]):
-                cell_text = cell_text.strip()
-                cell_text = re.sub(r'\*\*(.*?)\*\*', r'\1', cell_text)
-                c = tr.cells[ci]
-                c.text = cell_text
-                for para in c.paragraphs:
-                    for run in para.runs:
-                        run.font.name = 'Malgun Gothic'
-                        run.font.size = Pt(9)
-                        if ri == 0:
-                            run.bold = True
+    if in_table and table_rows:
+        flush_table(table_rows)
 
     buf = io.BytesIO()
     doc.save(buf)
