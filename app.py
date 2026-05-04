@@ -7,9 +7,10 @@
 ╚══════════════════════════════════════════════════════════════╝
 """
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import os
+import re
 import json
 import json as _json
 import logging
@@ -3098,7 +3099,6 @@ def _markdown_to_docx(markdown_text):
 def export_docx():
     """마크다운 분석 결과를 Word(.docx)로 변환하여 다운로드"""
     try:
-        from flask import send_file
         data = request.get_json(force=True)
         markdown_text = data.get('markdown', '').strip()
         raw_filename   = data.get('filename', '정책분석결과')
